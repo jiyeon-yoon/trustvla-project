@@ -41,8 +41,13 @@ docs/
   libero_openvla_rollout.md
   paper_mvp.md
   runpod_4090_quickstart.md
+  runpod_docker_image.md
   runpod_hf_workflow.md
   what_to_run.md
+docker/
+  Dockerfile.runpod
+  requirements-*.txt
+  start-trustvla.sh
 tests/
   test_*.py          Fast unit tests for the benchmark generator and metrics.
 notebooks/
@@ -52,6 +57,10 @@ notebooks/
 The instruction edits are governed by a written spec:
 
 - `docs/instruction_variation_rules.md`
+
+For reusable RunPod environments, see:
+
+- `docs/runpod_docker_image.md`
 
 ## Quick Start
 

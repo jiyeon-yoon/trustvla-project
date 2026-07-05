@@ -121,22 +121,84 @@ This means the TrustVLA code itself is working on RunPod. The remaining setup
 is to install `transformers` and LIBERO before running real LIBERO/OpenVLA
 experiments.
 
-## Next Commands
-
-Install OpenVLA-related Python packages:
+After installing OpenVLA-related Python packages:
 
 ```bash
 pip install transformers accelerate sentencepiece protobuf
 ```
 
-Run the doctor command again:
+the observed doctor state became:
 
-```bash
-cd /workspace/trustvla-project
-PYTHONPATH=src python -m trustvla.cli doctor
+```text
+libero: missing
+torch: ok
+transformers: ok
+PIL: ok
+numpy: ok
 ```
 
-Then download a small LIBERO suite from Hugging Face:
+The remaining blocker is LIBERO / robosuite / MuJoCo.
+
+## Python 3.10 venv Setup
+
+The base RunPod shell had Python 3.11 as default:
+
+```text
+Python 3.11.10
+```
+
+Python 3.10 existed:
+
+```text
+Python 3.10.12
+```
+
+but `python3.10 -m venv` initially failed because `ensurepip` was missing.
+Install the venv package:
+
+```bash
+apt-get update
+apt-get install -y python3.10-venv python3.10-dev build-essential
+```
+
+Then create and activate the environment:
+
+```bash
+cd /workspace
+python3.10 -m venv /workspace/trustvla-env
+source /workspace/trustvla-env/bin/activate
+python -m pip install -U pip setuptools wheel
+```
+
+For new terminals on the same Pod:
+
+```bash
+source /workspace/trustvla-env/bin/activate
+cd /workspace/trustvla-project
+```
+
+## Cost Note
+
+Stopping a RunPod Pod is not fully free. It releases the GPU, but stopped Pods
+can still bill for volume disk storage. Terminating a Pod stops that Pod volume
+storage charge but deletes `/workspace` unless the data is stored in a Network
+Volume or external backup.
+
+Long-term plan:
+
+```text
+Docker image for dependencies + GitHub for code + HF/Network Volume for large data
+```
+
+See:
+
+```text
+docs/runpod_docker_image.md
+```
+
+## Next Commands
+
+Download a small LIBERO suite from Hugging Face:
 
 ```bash
 PYTHONPATH=src python -m trustvla.cli download-libero-hf \

@@ -1,0 +1,86 @@
+# TrustVLA RunPod image.
+#
+# This image bakes in the slow-to-install runtime dependencies for:
+# - TrustVLA local benchmark tooling
+# - OpenVLA Hugging Face inference
+# - LIBERO / robosuite simulation
+#
+# Large mutable assets such as OpenVLA model weights and LIBERO datasets are not
+# baked into the image. Keep them in /workspace, a RunPod Network Volume, or the
+# Hugging Face cache.
+
+ARG BASE_IMAGE=runpod/pytorch:2.1.0-py3.10-cuda11.8.0-devel-ubuntu22.04
+FROM ${BASE_IMAGE}
+
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
+
+ENV DEBIAN_FRONTEND=noninteractive
+ENV PYTHONUNBUFFERED=1
+ENV VIRTUAL_ENV=/opt/trustvla-env
+ENV PATH="/opt/trustvla-env/bin:${PATH}"
+ENV HF_HOME=/workspace/.cache/huggingface
+ENV MUJOCO_GL=egl
+ENV PYTHONPATH=/workspace/trustvla-project/src:/opt/trustvla-project/src
+
+ARG TORCH_INDEX_URL=https://download.pytorch.org/whl/cu118
+ARG TORCH_VERSION=2.2.0
+ARG TORCHVISION_VERSION=0.17.0
+ARG LIBERO_REPO=https://github.com/Lifelong-Robot-Learning/LIBERO.git
+ARG LIBERO_REF=master
+
+RUN apt-get update --yes && \
+    apt-get install --yes --no-install-recommends \
+        build-essential \
+        ca-certificates \
+        cmake \
+        curl \
+        ffmpeg \
+        git \
+        libegl-dev \
+        libegl1 \
+        libgl1 \
+        libgl1-mesa-dev \
+        libglib2.0-0 \
+        libglew-dev \
+        libglfw3 \
+        libglfw3-dev \
+        libosmesa6-dev \
+        mesa-utils \
+        ninja-build \
+        patchelf \
+        pkg-config \
+        python3.10 \
+        python3.10-dev \
+        python3.10-venv \
+        rsync \
+        wget && \
+    rm -rf /var/lib/apt/lists/*
+
+RUN python3.10 -m venv "${VIRTUAL_ENV}" && \
+    python -m pip install --no-cache-dir --upgrade pip setuptools wheel
+
+COPY docker/requirements-openvla-runtime.txt /tmp/requirements-openvla-runtime.txt
+COPY docker/requirements-libero-no-vla-conflict.txt /tmp/requirements-libero-no-vla-conflict.txt
+
+RUN pip install --no-cache-dir \
+        "torch==${TORCH_VERSION}" \
+        "torchvision==${TORCHVISION_VERSION}" \
+        --index-url "${TORCH_INDEX_URL}" && \
+    pip install --no-cache-dir -r /tmp/requirements-openvla-runtime.txt
+
+RUN git clone --depth 1 --branch "${LIBERO_REF}" "${LIBERO_REPO}" /opt/LIBERO && \
+    pip install --no-cache-dir -r /tmp/requirements-libero-no-vla-conflict.txt && \
+    pip install --no-cache-dir -e /opt/LIBERO
+
+WORKDIR /opt/trustvla-project
+COPY . /opt/trustvla-project
+RUN pip install --no-cache-dir -e /opt/trustvla-project && \
+    PYTHONPATH=/opt/trustvla-project/src python -m pytest -q
+
+COPY docker/start-trustvla.sh /start-trustvla.sh
+RUN chmod +x /start-trustvla.sh && \
+    echo 'source /opt/trustvla-env/bin/activate' >> /root/.bashrc && \
+    echo 'cd /workspace/trustvla-project 2>/dev/null || cd /opt/trustvla-project' >> /root/.bashrc
+
+WORKDIR /workspace
+CMD ["/start-trustvla.sh"]
