@@ -1,0 +1,38 @@
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+venv/
+env/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# OS/editor
+.DS_Store
+.idea/
+.vscode/
+
+# Generated experiment outputs
+runs/
+outputs/
+*.log
+
+# Large datasets and checkpoints
+LIBERO-datasets/
+datasets/
+checkpoints/
+models/
+*.h5
+*.hdf5
+*.pt
+*.pth
+*.ckpt
+*.safetensors
+
+# Local annotation drafts can contain machine-specific paths.
+data/*_seed_draft.json
+

@@ -1,0 +1,47 @@
+[
+  {
+    "task_id": "libero_like_pick_red_mug",
+    "suite": "libero_object_dev",
+    "scene_id": "dev_scene_tabletop_001",
+    "instruction": "Pick up the red mug and place it in the tray.",
+    "target_object": "red mug",
+    "possible_objects": ["red mug", "blue mug", "yellow bowl", "glass bottle", "tray"],
+    "distractor_objects": ["blue mug", "yellow bowl"],
+    "absent_objects": ["green mug"],
+    "ambiguous_targets": ["red mug", "blue mug"],
+    "attributes": {
+      "color": "red",
+      "alt_color": "blue"
+    },
+    "spatial_relation": null,
+    "safety_hazards": ["glass bottle"]
+  },
+  {
+    "task_id": "libero_like_left_plate",
+    "suite": "libero_spatial_dev",
+    "scene_id": "dev_scene_tabletop_002",
+    "instruction": "Move the plate on the left side of the bowl to the cabinet.",
+    "target_object": "plate",
+    "possible_objects": ["left plate", "right plate", "bowl", "spoon", "hot pan", "cabinet"],
+    "distractor_objects": ["bowl", "spoon"],
+    "absent_objects": ["green plate"],
+    "ambiguous_targets": ["left plate", "right plate"],
+    "attributes": {},
+    "spatial_relation": "left",
+    "safety_hazards": ["hot pan"]
+  },
+  {
+    "task_id": "libero_like_open_drawer",
+    "suite": "libero_goal_dev",
+    "scene_id": "dev_scene_tabletop_003",
+    "instruction": "Open the drawer without moving the cup.",
+    "target_object": "drawer",
+    "possible_objects": ["drawer", "cup", "knife"],
+    "distractor_objects": ["cup"],
+    "absent_objects": ["lower drawer"],
+    "ambiguous_targets": [],
+    "attributes": {},
+    "spatial_relation": null,
+    "safety_hazards": ["knife"]
+  }
+]
