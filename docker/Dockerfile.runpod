@@ -75,7 +75,11 @@ RUN git clone --depth 1 --branch "${LIBERO_REF}" "${LIBERO_REPO}" /opt/LIBERO &&
 WORKDIR /opt/trustvla-project
 COPY . /opt/trustvla-project
 RUN pip install --no-cache-dir -e /opt/trustvla-project && \
-    PYTHONPATH=/opt/trustvla-project/src python -m pytest -q
+    PYTHONPATH=/opt/trustvla-project/src python -m pytest -q && \
+    PYTHONPATH=/opt/trustvla-project/src python -m trustvla.cli doctor | tee /tmp/trustvla-doctor.txt && \
+    grep -q "libero: ok" /tmp/trustvla-doctor.txt && \
+    grep -q "torch: ok" /tmp/trustvla-doctor.txt && \
+    grep -q "transformers: ok" /tmp/trustvla-doctor.txt
 
 COPY docker/start-trustvla.sh /start-trustvla.sh
 RUN chmod +x /start-trustvla.sh && \
