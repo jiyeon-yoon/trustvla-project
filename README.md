@@ -1,5 +1,10 @@
 # TrustVLA Guard
 
+Korean docs:
+
+- [README_kor.md](README_kor.md)
+- [docs/runpod_setup_ko.md](docs/runpod_setup_ko.md)
+
 TrustVLA Guard is a research scaffold for evaluating whether
 Vision-Language-Action (VLA) policies remain faithful, stable, and safe when
 language instructions are changed in controlled ways.
@@ -110,6 +115,7 @@ docs/
   runpod_connection_notes.md
   runpod_docker_image.md
   runpod_hf_workflow.md
+  runpod_setup_ko.md
   what_to_run.md
 
 notebooks/
@@ -202,8 +208,11 @@ The real experiment must run on a GPU/simulation machine because OpenVLA is a
 Use the RunPod image built by this repository:
 
 ```text
-ghcr.io/jiyeon-yoon/trustvla-runpod:v0.3
+ghcr.io/jiyeon-yoon/trustvla-runpod:v0.4
 ```
+
+Use the newest successful tag from the GitHub Actions `Build RunPod Image`
+workflow. Keep the previous working tag until the new tag succeeds.
 
 After starting a RunPod instance with that image:
 

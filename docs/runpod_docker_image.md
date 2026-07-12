@@ -3,6 +3,12 @@
 This document describes how to avoid reinstalling TrustVLA, OpenVLA, LIBERO,
 robosuite, and MuJoCo dependencies every time a RunPod Pod is created.
 
+For the current Korean step-by-step guide, start here:
+
+```text
+docs/runpod_setup_ko.md
+```
+
 ## Cost Rule
 
 Stopping a Pod is not fully free.
@@ -58,12 +64,12 @@ Then in GitHub:
 2. Go to `Actions`.
 3. Select `Build RunPod Image`.
 4. Click `Run workflow`.
-5. Use tag `v0.1`.
+5. Use the next tag, for example `v0.4`.
 
 When it succeeds, the image should be:
 
 ```text
-ghcr.io/jiyeon-yoon/trustvla-runpod:v0.1
+ghcr.io/jiyeon-yoon/trustvla-runpod:v0.4
 ```
 
 If the package is private, RunPod may need registry credentials. The easiest
@@ -77,10 +83,10 @@ If Docker Desktop is available:
 cd /Users/yoon_jiyeon/Documents/Codex/2026-07-05/trustvla-project/trustvla-guard
 docker build --platform linux/amd64 \
   -f docker/Dockerfile.runpod \
-  -t YOUR_DOCKERHUB_USERNAME/trustvla-runpod:v0.1 .
+  -t YOUR_DOCKERHUB_USERNAME/trustvla-runpod:v0.4 .
 
 docker login
-docker push YOUR_DOCKERHUB_USERNAME/trustvla-runpod:v0.1
+docker push YOUR_DOCKERHUB_USERNAME/trustvla-runpod:v0.4
 ```
 
 Use the pushed Docker Hub image name in the RunPod template.
@@ -94,7 +100,7 @@ In the RunPod console:
 3. Set container image:
 
 ```text
-ghcr.io/jiyeon-yoon/trustvla-runpod:v0.1
+ghcr.io/jiyeon-yoon/trustvla-runpod:v0.4
 ```
 
 4. Set container disk to at least `50 GB`.
