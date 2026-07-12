@@ -1,8 +1,6 @@
 # What To Run
 
-## On This Local Machine
-
-Use this to verify the TrustVLA pipeline without LIBERO/OpenVLA:
+## Local Mac: code and metric validation
 
 ```bash
 cd /Users/yoon_jiyeon/Documents/Codex/2026-07-05/trustvla-project/trustvla-guard
@@ -11,117 +9,131 @@ PYTHONPATH=src python -m pytest -q
 
 PYTHONPATH=src python -m trustvla.cli generate \
   --seed-tasks data/seed_tasks.json \
-  --out runs/smoke/generated_benchmark.jsonl
+  --out runs/smoke/benchmark.jsonl
 
-PYTHONPATH=src python -m trustvla.cli dummy-rollouts \
-  --benchmark runs/smoke/generated_benchmark.jsonl \
-  --out runs/smoke/dummy_rollouts.jsonl
+PYTHONPATH=src python -m trustvla.cli validate-benchmark \
+  --benchmark runs/smoke/benchmark.jsonl \
+  --safety-policies data/safety_policies.json
 
-PYTHONPATH=src python -m trustvla.cli guard-dummy-rollouts \
-  --benchmark runs/smoke/generated_benchmark.jsonl \
-  --out runs/smoke/guarded_dummy_rollouts.jsonl
+PYTHONPATH=src python -m trustvla.cli tradeoff-dummy-rollouts \
+  --benchmark runs/smoke/benchmark.jsonl \
+  --safety-policies data/safety_policies.json \
+  --out-dir runs/smoke
 
 PYTHONPATH=src python -m trustvla.cli compare \
-  --benchmark runs/smoke/generated_benchmark.jsonl \
-  --rollout baseline=runs/smoke/dummy_rollouts.jsonl \
-  --rollout guarded=runs/smoke/guarded_dummy_rollouts.jsonl \
-  --out runs/smoke/comparison_report.md
+  --benchmark runs/smoke/benchmark.jsonl \
+  --rollout visual=runs/smoke/dummy_visual_prior.jsonl \
+  --rollout grounded=runs/smoke/dummy_grounded.jsonl \
+  --rollout guarded=runs/smoke/dummy_grounded_guarded.jsonl \
+  --out runs/smoke/selective_obedience_report.md
 ```
 
-Look at:
+Open `runs/smoke/selective_obedience_report.md`. Every `dummy_*` value is synthetic
+and only verifies that metrics and guard wiring work.
 
-- `runs/smoke/generated_benchmark.jsonl`: generated paired instruction cases
-- `runs/smoke/comparison_report.md`: before/after metric table
+## RunPod: first real pilot
 
-This is a pipeline check, not a paper result.
-
-## On A GPU/SIM Machine Only
-
-Do not run this section on the local Mac unless LIBERO is installed. Use it after
-installing LIBERO, MuJoCo/robosuite, PyTorch, Transformers, and OpenVLA dependencies:
-
-First read `docs/datasets.md`. For the pilot, download only `libero_object`, not the
-full 100GB dataset mirror.
-
-If using a notebook, open:
-
-```text
-notebooks/runpod_libero_openvla.ipynb
-```
-
-If using CLI, the selective Hugging Face downloader is:
+Check the image runtime:
 
 ```bash
-PYTHONPATH=src python -m trustvla.cli download-libero-hf \
-  --suite libero_object \
-  --local-dir /workspace/LIBERO-datasets
+source /workspace/activate_trustvla.sh
+cd /workspace/trustvla-project
+PYTHONPATH=src python -m pytest -q
+PYTHONPATH=src python -m trustvla.cli doctor
+nvidia-smi
 ```
 
-```bash
-cd /path/to/trustvla-guard
+Export five LIBERO tasks and annotate the generated JSON manually:
 
+```bash
 PYTHONPATH=src python -m trustvla.cli export-libero-seeds \
-  --suite libero_object \
-  --limit 30 \
+  --suite libero_object --limit 5 \
   --out data/libero_object_seed_draft.json
 ```
 
-Then manually fill `target_object`, `possible_objects`, `distractor_objects`,
-`absent_objects`, `ambiguous_targets`, and `safety_hazards`.
+Required manual fields include `target_object`, `possible_objects`, compatible
+`distractor_objects`, `absent_objects`, `ambiguous_targets`, and `safety_hazards`.
+
+Create and independently review a trusted policy draft:
+
+```bash
+PYTHONPATH=src python -m trustvla.cli export-safety-policies \
+  --seed-tasks data/libero_object_seed_draft.json \
+  --out data/libero_object_safety_policies_draft.json
+```
+
+Generate and validate the benchmark:
 
 ```bash
 PYTHONPATH=src python -m trustvla.cli generate \
   --seed-tasks data/libero_object_seed_draft.json \
-  --out runs/libero_object/trustvla_pairs.jsonl
+  --init-states 3 \
+  --out runs/libero_object/benchmark.jsonl
 
-PYTHONPATH=src python -m trustvla.cli run-openvla-libero \
-  --benchmark runs/libero_object/trustvla_pairs.jsonl \
-  --out runs/libero_object/openvla_rollouts.jsonl \
-  --model-path openvla/openvla-7b \
-  --suite libero_object \
-  --device cuda:0 \
-  --trace-dir runs/libero_object/traces/openvla
-
-PYTHONPATH=src python -m trustvla.cli run-openvla-libero \
-  --benchmark runs/libero_object/trustvla_pairs.jsonl \
-  --out runs/libero_object/openvla_guarded_rollouts.jsonl \
-  --model-path openvla/openvla-7b \
-  --suite libero_object \
-  --device cuda:0 \
-  --guarded \
-  --trace-dir runs/libero_object/traces/openvla_guarded
-
-PYTHONPATH=src python -m trustvla.cli detect-rollout-events \
-  --benchmark runs/libero_object/trustvla_pairs.jsonl \
-  --rollouts runs/libero_object/openvla_rollouts.jsonl \
-  --out runs/libero_object/openvla_rollouts.detected.jsonl
-
-PYTHONPATH=src python -m trustvla.cli detect-rollout-events \
-  --benchmark runs/libero_object/trustvla_pairs.jsonl \
-  --rollouts runs/libero_object/openvla_guarded_rollouts.jsonl \
-  --out runs/libero_object/openvla_guarded_rollouts.detected.jsonl
-
-PYTHONPATH=src python -m trustvla.cli compare \
-  --benchmark runs/libero_object/trustvla_pairs.jsonl \
-  --rollout baseline=runs/libero_object/openvla_rollouts.detected.jsonl \
-  --rollout guarded=runs/libero_object/openvla_guarded_rollouts.detected.jsonl \
-  --out runs/libero_object/openvla_comparison_report.md
+PYTHONPATH=src python -m trustvla.cli validate-benchmark \
+  --benchmark runs/libero_object/benchmark.jsonl \
+  --safety-policies data/libero_object_safety_policies_draft.json
 ```
 
-Look at:
+Warnings named `native_success_not_valid` are expected for target-changing edits. They
+mean a custom counterfactual success predicate is required before those cases can be
+reported as task success.
 
-- `runs/libero_object/openvla_comparison_report.md`: first paper table candidate
-- `runs/libero_object/traces/openvla/*.json`: per-case rollout traces
-- cases where `selected_target` is empty: detector needs to be adapted to the actual
-  LIBERO `info` keys
-
-## Environment Check
-
-Run this before real rollout commands:
+Run raw OpenVLA on a small budget first:
 
 ```bash
-PYTHONPATH=src python -m trustvla.cli doctor
+PYTHONPATH=src python -m trustvla.cli run-openvla-libero \
+  --benchmark runs/libero_object/benchmark.jsonl \
+  --out runs/libero_object/openvla_raw.jsonl \
+  --model-path openvla/openvla-7b \
+  --suite libero_object --device cuda:0 --max-steps 50 \
+  --trace-dir runs/libero_object/traces/raw
 ```
 
-If `libero: missing`, stay with the local smoke-test section or move to a GPU/SIM
-environment.
+Run the cheap prompt-grounding pilot:
+
+```bash
+PYTHONPATH=src python -m trustvla.cli run-openvla-libero \
+  --benchmark runs/libero_object/benchmark.jsonl \
+  --out runs/libero_object/openvla_language_emphasis.jsonl \
+  --model-path openvla/openvla-7b \
+  --suite libero_object --device cuda:0 --max-steps 50 \
+  --grounding-mode language_emphasis \
+  --trace-dir runs/libero_object/traces/language_emphasis
+```
+
+This prompt-only condition is a pilot baseline, not a replacement for a published
+grounding method such as CAG or IGAR.
+
+Run language emphasis plus the non-oracle safety-policy gate:
+
+```bash
+PYTHONPATH=src python -m trustvla.cli run-openvla-libero \
+  --benchmark runs/libero_object/benchmark.jsonl \
+  --out runs/libero_object/openvla_gated.jsonl \
+  --model-path openvla/openvla-7b \
+  --suite libero_object --device cuda:0 --max-steps 50 \
+  --grounding-mode language_emphasis \
+  --guarded \
+  --safety-policies data/libero_object_safety_policies_draft.json \
+  --trace-dir runs/libero_object/traces/gated
+```
+
+Score language-safety trade-offs and pairwise action traces:
+
+```bash
+PYTHONPATH=src python -m trustvla.cli tradeoff-score \
+  --benchmark runs/libero_object/benchmark.jsonl \
+  --rollouts runs/libero_object/openvla_raw.jsonl
+
+PYTHONPATH=src python -m trustvla.cli pair-score \
+  --benchmark runs/libero_object/benchmark.jsonl \
+  --rollouts runs/libero_object/openvla_raw.jsonl \
+  --difference-threshold 0.05 --prefix-steps 10
+```
+
+The first real milestone is one completed base rollout plus its trace JSON. Do not launch
+the full benchmark until that case has been visually inspected.
+
+Each episode is appended immediately. After interruption, rerun the same rollout command
+with `--resume`; existing `case_id` records in the output JSONL are skipped.

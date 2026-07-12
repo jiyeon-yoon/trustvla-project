@@ -56,19 +56,19 @@ tag 입력칸에는 새 버전을 넣습니다.
 예:
 
 ```text
-v0.4
+v0.5
 ```
 
 빌드가 성공하면 사용할 image는 다음입니다.
 
 ```text
-ghcr.io/jiyeon-yoon/trustvla-runpod:v0.4
+ghcr.io/jiyeon-yoon/trustvla-runpod:v0.5
 ```
 
 주의:
 
 ```text
-v0.4가 성공하기 전까지 v0.1 같은 이전 성공 image는 지우지 않는 것이 좋습니다.
+v0.5가 성공하기 전까지 v0.1 같은 이전 성공 image는 지우지 않는 것이 좋습니다.
 새 image가 실패하면 이전 image가 fallback입니다.
 ```
 
@@ -101,7 +101,7 @@ RunPod에서 새 Pod를 만듭니다.
 
 ```text
 GPU: RTX 4090
-Container image: ghcr.io/jiyeon-yoon/trustvla-runpod:v0.4
+Container image: ghcr.io/jiyeon-yoon/trustvla-runpod:v0.5
 Container disk: 최소 20GB, 여유 있으면 50GB
 Volume disk: smoke test만 할 거면 20GB
 HTTP port: 8888
@@ -125,7 +125,7 @@ RunPod 화면에서 template/custom template을 만들 때 `Container Image` 또
 `Image Name` 입력칸에 아래를 넣습니다.
 
 ```text
-ghcr.io/jiyeon-yoon/trustvla-runpod:v0.4
+ghcr.io/jiyeon-yoon/trustvla-runpod:v0.5
 ```
 
 만약 image pull이 실패하면서 authorization 오류가 나면 GHCR package가 private일 수 있습니다.
@@ -279,45 +279,45 @@ PYTHONPATH=src python -m pytest -q
 PYTHONPATH=src python -m trustvla.cli doctor
 ```
 
-instruction benchmark 생성:
+선택적 복종 benchmark 생성과 검증:
 
 ```bash
 PYTHONPATH=src python -m trustvla.cli generate \
   --seed-tasks data/seed_tasks.json \
-  --out runs/smoke/generated_benchmark.jsonl
+  --out runs/smoke/benchmark.jsonl
+
+PYTHONPATH=src python -m trustvla.cli validate-benchmark \
+  --benchmark runs/smoke/benchmark.jsonl \
+  --safety-policies data/safety_policies.json
 ```
 
-dummy rollout:
+synthetic trade-off pilot:
 
 ```bash
-PYTHONPATH=src python -m trustvla.cli dummy-rollouts \
-  --benchmark runs/smoke/generated_benchmark.jsonl \
-  --out runs/smoke/dummy_rollouts.jsonl
-```
-
-guarded dummy rollout:
-
-```bash
-PYTHONPATH=src python -m trustvla.cli guard-dummy-rollouts \
-  --benchmark runs/smoke/generated_benchmark.jsonl \
-  --out runs/smoke/guarded_dummy_rollouts.jsonl
+PYTHONPATH=src python -m trustvla.cli tradeoff-dummy-rollouts \
+  --benchmark runs/smoke/benchmark.jsonl \
+  --safety-policies data/safety_policies.json \
+  --out-dir runs/smoke
 ```
 
 비교 리포트:
 
 ```bash
 PYTHONPATH=src python -m trustvla.cli compare \
-  --benchmark runs/smoke/generated_benchmark.jsonl \
-  --rollout baseline=runs/smoke/dummy_rollouts.jsonl \
-  --rollout guarded=runs/smoke/guarded_dummy_rollouts.jsonl \
-  --out runs/smoke/comparison_report.md
+  --benchmark runs/smoke/benchmark.jsonl \
+  --rollout visual=runs/smoke/dummy_visual_prior.jsonl \
+  --rollout grounded=runs/smoke/dummy_grounded.jsonl \
+  --rollout guarded=runs/smoke/dummy_grounded_guarded.jsonl \
+  --out runs/smoke/selective_obedience_report.md
 ```
 
 확인할 파일:
 
 ```text
-runs/smoke/comparison_report.md
+runs/smoke/selective_obedience_report.md
 ```
+
+이 report는 metric 연결을 검사하는 합성 결과이며 논문 결과가 아닙니다.
 
 ## 10. LIBERO 데이터 다운로드
 
@@ -355,6 +355,9 @@ PYTHONPATH=src python -m trustvla.cli export-libero-seeds \
 
 생성된 파일에서 다음 field는 사람이 확인/보강해야 할 수 있습니다.
 
+`possible_objects`와 단일 target 후보는 LIBERO 공식 BDDL parser 결과로 자동
+채워집니다. 자동값도 반드시 장면과 대조합니다.
+
 ```text
 target_object
 possible_objects
@@ -364,12 +367,27 @@ ambiguous_targets
 safety_hazards
 ```
 
-## 12. Paired instruction benchmark 생성
+## 12. Safety policy, paired benchmark 생성과 검증
+
+seed draft의 annotation을 마친 뒤 policy draft를 만듭니다.
+
+```bash
+PYTHONPATH=src python -m trustvla.cli export-safety-policies \
+  --seed-tasks data/libero_object_seed_draft.json \
+  --out data/libero_object_safety_policies_draft.json
+```
+
+`DRAFT` policy는 다른 팀원이 독립적으로 검토해야 합니다. 그 다음:
 
 ```bash
 PYTHONPATH=src python -m trustvla.cli generate \
   --seed-tasks data/libero_object_seed_draft.json \
+  --init-states 3 \
   --out runs/libero_object/trustvla_pairs.jsonl
+
+PYTHONPATH=src python -m trustvla.cli validate-benchmark \
+  --benchmark runs/libero_object/trustvla_pairs.jsonl \
+  --safety-policies data/libero_object_safety_policies_draft.json
 ```
 
 ## 13. OpenVLA raw rollout
@@ -387,7 +405,21 @@ PYTHONPATH=src python -m trustvla.cli run-openvla-libero \
   --trace-dir runs/libero_object/traces/openvla
 ```
 
-## 14. OpenVLA + Guard rollout
+## 14. OpenVLA language-emphasis pilot + Guard rollout
+
+먼저 저비용 grounding pilot을 실행합니다. 이는 가설 확인용 prompt baseline입니다.
+
+```bash
+PYTHONPATH=src python -m trustvla.cli run-openvla-libero \
+  --benchmark runs/libero_object/trustvla_pairs.jsonl \
+  --out runs/libero_object/openvla_language_emphasis.jsonl \
+  --model-path openvla/openvla-7b \
+  --suite libero_object --device cuda:0 --max-steps 50 \
+  --grounding-mode language_emphasis \
+  --trace-dir runs/libero_object/traces/language_emphasis
+```
+
+같은 grounding condition에 safety policy gate를 적용합니다.
 
 ```bash
 PYTHONPATH=src python -m trustvla.cli run-openvla-libero \
@@ -397,7 +429,9 @@ PYTHONPATH=src python -m trustvla.cli run-openvla-libero \
   --suite libero_object \
   --device cuda:0 \
   --max-steps 50 \
+  --grounding-mode language_emphasis \
   --guarded \
+  --safety-policies data/libero_object_safety_policies_draft.json \
   --trace-dir runs/libero_object/traces/openvla_guarded
 ```
 
@@ -430,6 +464,22 @@ PYTHONPATH=src python -m trustvla.cli compare \
   --rollout guarded=runs/libero_object/openvla_guarded_rollouts.detected.jsonl \
   --out runs/libero_object/openvla_comparison_report.md
 ```
+
+새 trade-off와 실제 action-pair metric:
+
+```bash
+PYTHONPATH=src python -m trustvla.cli tradeoff-score \
+  --benchmark runs/libero_object/trustvla_pairs.jsonl \
+  --rollouts runs/libero_object/openvla_rollouts.detected.jsonl
+
+PYTHONPATH=src python -m trustvla.cli pair-score \
+  --benchmark runs/libero_object/trustvla_pairs.jsonl \
+  --rollouts runs/libero_object/openvla_rollouts.detected.jsonl \
+  --difference-threshold 0.05 --prefix-steps 10
+```
+
+rollout은 episode마다 즉시 저장됩니다. 연결이 끊겼다면 기존 명령 마지막에
+`--resume`을 추가하면 완료된 case는 다시 실행하지 않습니다.
 
 논문 table 후보:
 
@@ -475,7 +525,7 @@ runs/libero_object/traces/
 
 ```text
 원인: custom image로 뜬 것이 아니거나 start script가 실행되지 않음
-확인: RunPod template의 container image가 ghcr.io/jiyeon-yoon/trustvla-runpod:v0.4인지 확인
+확인: RunPod template의 container image가 ghcr.io/jiyeon-yoon/trustvla-runpod:v0.5인지 확인
 ```
 
 ### VSCode가 raw IP로 접속 실패

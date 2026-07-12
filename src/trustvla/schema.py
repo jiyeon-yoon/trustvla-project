@@ -14,6 +14,7 @@ VariantType = Literal[
     "attribute_swap",
     "spatial_swap",
     "safety_constraint",
+    "unsafe_instruction",
     "impossible_object",
     "ambiguous_reference",
     "distractor",
@@ -23,6 +24,13 @@ ExpectedBehavior = Literal["execute", "no_op", "clarification"]
 ActionRelation = Literal["similar", "different", "should_stop"]
 ValidityStatus = Literal["accepted", "needs_review", "rejected"]
 VerifierDecision = Literal["allow", "block", "clarify"]
+SafetyClass = Literal[
+    "benign",
+    "safety_constrained",
+    "hazardous",
+    "infeasible",
+    "ambiguous",
+]
 
 
 @dataclass(frozen=True)
@@ -74,6 +82,8 @@ class InstructionVariant:
     expected_target: str | None
     base_instruction: str
     scene_id: str | None = None
+    pair_id: str | None = None
+    safety_class: SafetyClass = "benign"
     forbidden_targets: list[str] = field(default_factory=list)
     safety_constraints: list[str] = field(default_factory=list)
     expected_behavior: ExpectedBehavior = "execute"
@@ -95,6 +105,8 @@ class InstructionVariant:
             expected_target=record.get("expected_target"),
             base_instruction=str(record.get("base_instruction", record["instruction"])),
             scene_id=record.get("scene_id"),
+            pair_id=record.get("pair_id", record.get("seed_task_id")),
+            safety_class=record.get("safety_class", _infer_safety_class(record)),
             forbidden_targets=list(record.get("forbidden_targets", [])),
             safety_constraints=list(record.get("safety_constraints", [])),
             expected_behavior=record.get("expected_behavior", "execute"),
@@ -133,6 +145,38 @@ class ActionProposal:
 
 
 @dataclass(frozen=True)
+class SafetyPolicy:
+    """Trusted scene policy kept separate from benchmark answer labels.
+
+    A safety gate may read this policy, the user instruction, scene inventory, and a
+    policy proposal. It must not read ``expected_behavior`` or other benchmark labels.
+    """
+
+    policy_id: str
+    scene_id: str
+    visible_objects: list[str] = field(default_factory=list)
+    protected_objects: list[str] = field(default_factory=list)
+    forbidden_targets: list[str] = field(default_factory=list)
+    forbidden_contacts: list[str] = field(default_factory=list)
+    notes: str = ""
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+    @classmethod
+    def from_dict(cls, record: dict[str, Any]) -> "SafetyPolicy":
+        return cls(
+            policy_id=str(record["policy_id"]),
+            scene_id=str(record["scene_id"]),
+            visible_objects=list(record.get("visible_objects", [])),
+            protected_objects=list(record.get("protected_objects", [])),
+            forbidden_targets=list(record.get("forbidden_targets", [])),
+            forbidden_contacts=list(record.get("forbidden_contacts", [])),
+            notes=str(record.get("notes", "")),
+        )
+
+
+@dataclass(frozen=True)
 class RolloutRecord:
     """Result produced by running a policy on one instruction variant."""
 
@@ -146,6 +190,8 @@ class RolloutRecord:
     steps: int | None = None
     action_trace_path: str | None = None
     notes: str = ""
+    native_success: bool | None = None
+    instruction_success: bool | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -156,6 +202,8 @@ class RolloutRecord:
             case_id=str(record["case_id"]),
             policy_id=str(record["policy_id"]),
             success=bool(record["success"]),
+            native_success=record.get("native_success", record.get("success")),
+            instruction_success=record.get("instruction_success"),
             executed_behavior=record.get("executed_behavior", "execute"),
             selected_target=record.get("selected_target"),
             safety_events=list(record.get("safety_events", [])),
@@ -184,3 +232,49 @@ class MetricSummary:
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
+
+
+@dataclass(frozen=True)
+class ObedienceSafetySummary:
+    """Policy-level language-following versus safety trade-off metrics."""
+
+    policy_id: str
+    num_cases: int
+    num_safe_executable: int
+    num_hazardous: int
+    benign_instruction_compliance: float | None
+    safety_constraint_compliance: float | None
+    hazardous_instruction_compliance: float | None
+    appropriate_abstention: float | None
+    over_refusal_rate: float | None
+    execution_coverage: float
+    selective_obedience_score: float | None
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+
+@dataclass(frozen=True)
+class PairedTrajectorySummary:
+    """Actual base-versus-variant trajectory comparison for one policy."""
+
+    policy_id: str
+    num_pairs: int
+    num_scored_pairs: int
+    num_trace_pairs: int
+    relation_compliance_rate: float | None
+    mean_similar_distance: float | None
+    mean_different_distance: float | None
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+
+def _infer_safety_class(record: dict[str, Any]) -> SafetyClass:
+    variant_type = record.get("variant_type")
+    return {
+        "safety_constraint": "safety_constrained",
+        "unsafe_instruction": "hazardous",
+        "impossible_object": "infeasible",
+        "ambiguous_reference": "ambiguous",
+    }.get(variant_type, "benign")

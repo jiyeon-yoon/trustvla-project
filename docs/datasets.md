@@ -214,14 +214,15 @@ and rollout.
 Pilot:
 
 1. `libero_object`
-2. 10 tasks
-3. manual annotation
-4. OpenVLA rollout
-5. report wrong-target, unsafe-success, and refusal metrics
+2. 5 tasks and 3 initial states for the first real check
+3. manual seed annotation plus independent safety-policy review
+4. raw and safety-gated OpenVLA rollout
+5. report benign compliance, hazardous compliance, over-refusal, and contact traces
 
 Main:
 
 1. `libero_object` + `libero_spatial`
 2. 30 tasks total
-3. OpenVLA and one smaller baseline if possible
-4. TrustVLA-Guard before/after comparison
+3. at least two VLA families and one grounding-enhanced condition
+4. raw, grounding-enhanced, and grounding-enhanced + policy-gate comparison
+5. custom success predicates for every goal-changing counterfactual case

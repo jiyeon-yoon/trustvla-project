@@ -8,15 +8,22 @@ import sys
 from pathlib import Path
 from importlib.util import find_spec
 
-from .adapters import DummyPolicyAdapter
+from .adapters import (
+    DummyGroundedPolicyAdapter,
+    DummyPolicyAdapter,
+    run_guarded_proposal,
+)
 from .detectors import enrich_rollouts_with_detections
 from .hf_datasets import download_libero_suite_from_hf
 from .io import read_json, read_jsonl, write_jsonl
 from .metrics import summarize
+from .paired_metrics import summarize_paired_trajectories
 from .perturbations import generate_variants
 from .report import write_comparison_report
 from .schema import InstructionVariant, RolloutRecord, SeedTask
-from .verifier import RuntimeVerifier
+from .safety_gate import SafetyPolicyRegistry, export_safety_policy_draft
+from .tradeoff_metrics import summarize_obedience_safety
+from .validation import validate_benchmark
 from .integrations.libero_openvla import (
     LiberoOpenVLAConfig,
     export_libero_seed_tasks,
@@ -34,6 +41,7 @@ def main() -> None:
     generate_parser = subparsers.add_parser("generate")
     generate_parser.add_argument("--seed-tasks", required=True)
     generate_parser.add_argument("--out", required=True)
+    generate_parser.add_argument("--init-states", type=int, default=1)
     generate_parser.set_defaults(func=_generate)
 
     dummy_parser = subparsers.add_parser("dummy-rollouts")
@@ -43,13 +51,37 @@ def main() -> None:
 
     guard_dummy_parser = subparsers.add_parser("guard-dummy-rollouts")
     guard_dummy_parser.add_argument("--benchmark", required=True)
+    guard_dummy_parser.add_argument("--safety-policies", required=True)
     guard_dummy_parser.add_argument("--out", required=True)
     guard_dummy_parser.set_defaults(func=_guard_dummy_rollouts)
+
+    tradeoff_dummy_parser = subparsers.add_parser("tradeoff-dummy-rollouts")
+    tradeoff_dummy_parser.add_argument("--benchmark", required=True)
+    tradeoff_dummy_parser.add_argument("--safety-policies", required=True)
+    tradeoff_dummy_parser.add_argument("--out-dir", required=True)
+    tradeoff_dummy_parser.set_defaults(func=_tradeoff_dummy_rollouts)
 
     score_parser = subparsers.add_parser("score")
     score_parser.add_argument("--benchmark", required=False)
     score_parser.add_argument("--rollouts", required=True)
     score_parser.set_defaults(func=_score)
+
+    tradeoff_score_parser = subparsers.add_parser("tradeoff-score")
+    tradeoff_score_parser.add_argument("--benchmark", required=True)
+    tradeoff_score_parser.add_argument("--rollouts", required=True)
+    tradeoff_score_parser.set_defaults(func=_tradeoff_score)
+
+    pair_score_parser = subparsers.add_parser("pair-score")
+    pair_score_parser.add_argument("--benchmark", required=True)
+    pair_score_parser.add_argument("--rollouts", required=True)
+    pair_score_parser.add_argument("--difference-threshold", type=float, default=0.05)
+    pair_score_parser.add_argument("--prefix-steps", type=int, default=10)
+    pair_score_parser.set_defaults(func=_pair_score)
+
+    validate_parser = subparsers.add_parser("validate-benchmark")
+    validate_parser.add_argument("--benchmark", required=True)
+    validate_parser.add_argument("--safety-policies", required=True)
+    validate_parser.set_defaults(func=_validate_benchmark)
 
     compare_parser = subparsers.add_parser("compare")
     compare_parser.add_argument("--benchmark", required=True)
@@ -77,6 +109,11 @@ def main() -> None:
     export_libero_parser.add_argument("--limit", type=int)
     export_libero_parser.set_defaults(func=_export_libero_seeds)
 
+    export_policy_parser = subparsers.add_parser("export-safety-policies")
+    export_policy_parser.add_argument("--seed-tasks", required=True)
+    export_policy_parser.add_argument("--out", required=True)
+    export_policy_parser.set_defaults(func=_export_safety_policies)
+
     run_openvla_parser = subparsers.add_parser("run-openvla-libero")
     run_openvla_parser.add_argument("--benchmark", required=True)
     run_openvla_parser.add_argument("--out", required=True)
@@ -92,7 +129,14 @@ def main() -> None:
     run_openvla_parser.add_argument("--seed", type=int, default=0)
     run_openvla_parser.add_argument("--trace-dir", default="runs/openvla/traces")
     run_openvla_parser.add_argument("--policy-id", default="openvla")
+    run_openvla_parser.add_argument(
+        "--grounding-mode",
+        choices=["none", "language_emphasis"],
+        default="none",
+    )
     run_openvla_parser.add_argument("--guarded", action="store_true")
+    run_openvla_parser.add_argument("--safety-policies")
+    run_openvla_parser.add_argument("--resume", action="store_true")
     run_openvla_parser.set_defaults(func=_run_openvla_libero)
 
     args = parser.parse_args()
@@ -126,7 +170,7 @@ def _doctor(args: argparse.Namespace) -> None:
 def _generate(args: argparse.Namespace) -> None:
     seed_records = read_json(args.seed_tasks)
     seed_tasks = [SeedTask.from_dict(record) for record in seed_records]
-    variants = generate_variants(seed_tasks)
+    variants = generate_variants(seed_tasks, init_states=args.init_states)
     write_jsonl(args.out, [variant.to_dict() for variant in variants])
     print(f"wrote {len(variants)} variants to {args.out}")
 
@@ -142,13 +186,40 @@ def _dummy_rollouts(args: argparse.Namespace) -> None:
 def _guard_dummy_rollouts(args: argparse.Namespace) -> None:
     variants = [InstructionVariant.from_dict(record) for record in read_jsonl(args.benchmark)]
     adapter = DummyPolicyAdapter()
-    verifier = RuntimeVerifier()
+    registry = SafetyPolicyRegistry.from_path(args.safety_policies)
     rollouts = [
-        verifier.apply(variant, adapter.propose_case(variant)).to_dict()
+        run_guarded_proposal(
+            variant,
+            adapter.propose_case(variant),
+            registry.for_scene(variant.scene_id),
+        ).to_dict()
         for variant in variants
     ]
     write_jsonl(args.out, rollouts)
     print(f"wrote {len(rollouts)} guarded dummy rollouts to {args.out}")
+
+
+def _tradeoff_dummy_rollouts(args: argparse.Namespace) -> None:
+    variants = [InstructionVariant.from_dict(record) for record in read_jsonl(args.benchmark)]
+    registry = SafetyPolicyRegistry.from_path(args.safety_policies)
+    visual_prior = DummyPolicyAdapter()
+    grounded = DummyGroundedPolicyAdapter()
+    out_dir = Path(args.out_dir)
+
+    visual_rollouts = [visual_prior.run_case(variant).to_dict() for variant in variants]
+    grounded_rollouts = [grounded.run_case(variant).to_dict() for variant in variants]
+    guarded_rollouts = [
+        run_guarded_proposal(
+            variant,
+            grounded.propose_case(variant),
+            registry.for_scene(variant.scene_id),
+        ).to_dict()
+        for variant in variants
+    ]
+    write_jsonl(out_dir / "dummy_visual_prior.jsonl", visual_rollouts)
+    write_jsonl(out_dir / "dummy_grounded.jsonl", grounded_rollouts)
+    write_jsonl(out_dir / "dummy_grounded_guarded.jsonl", guarded_rollouts)
+    print(f"wrote synthetic trade-off pilot rollouts to {out_dir}")
 
 
 def _score(args: argparse.Namespace) -> None:
@@ -159,6 +230,47 @@ def _score(args: argparse.Namespace) -> None:
         variants = _variants_from_rollout_directory(args.rollouts)
     summaries = summarize(variants, rollouts)
     print(json.dumps([summary.to_dict() for summary in summaries], indent=2, sort_keys=True))
+
+
+def _tradeoff_score(args: argparse.Namespace) -> None:
+    variants = [InstructionVariant.from_dict(record) for record in read_jsonl(args.benchmark)]
+    rollouts = [RolloutRecord.from_dict(record) for record in read_jsonl(args.rollouts)]
+    summaries = summarize_obedience_safety(variants, rollouts)
+    print(json.dumps([summary.to_dict() for summary in summaries], indent=2, sort_keys=True))
+
+
+def _pair_score(args: argparse.Namespace) -> None:
+    variants = [InstructionVariant.from_dict(record) for record in read_jsonl(args.benchmark)]
+    rollouts = [RolloutRecord.from_dict(record) for record in read_jsonl(args.rollouts)]
+    summaries = summarize_paired_trajectories(
+        variants,
+        rollouts,
+        difference_threshold=args.difference_threshold,
+        prefix_steps=args.prefix_steps,
+    )
+    print(json.dumps([summary.to_dict() for summary in summaries], indent=2, sort_keys=True))
+
+
+def _validate_benchmark(args: argparse.Namespace) -> None:
+    variants = [InstructionVariant.from_dict(record) for record in read_jsonl(args.benchmark)]
+    registry = SafetyPolicyRegistry.from_path(args.safety_policies)
+    issues = validate_benchmark(variants, registry)
+    errors = sum(issue.severity == "error" for issue in issues)
+    warnings = sum(issue.severity == "warning" for issue in issues)
+    print(
+        json.dumps(
+            {
+                "num_cases": len(variants),
+                "errors": errors,
+                "warnings": warnings,
+                "issues": [issue.to_dict() for issue in issues],
+            },
+            indent=2,
+            sort_keys=True,
+        )
+    )
+    if errors:
+        raise SystemExit(1)
 
 
 def _compare(args: argparse.Namespace) -> None:
@@ -199,7 +311,17 @@ def _export_libero_seeds(args: argparse.Namespace) -> None:
     print(f"wrote LIBERO seed-task draft to {args.out}")
 
 
+def _export_safety_policies(args: argparse.Namespace) -> None:
+    records = read_json(args.seed_tasks)
+    seed_tasks = [SeedTask.from_dict(record) for record in records]
+    export_safety_policy_draft(seed_tasks, args.out)
+    print(f"wrote reviewable safety-policy draft to {args.out}")
+
+
 def _run_openvla_libero(args: argparse.Namespace) -> None:
+    policy_id = args.policy_id
+    if args.grounding_mode != "none" and policy_id == "openvla":
+        policy_id = f"openvla+{args.grounding_mode}"
     config = LiberoOpenVLAConfig(
         model_path=args.model_path,
         suite_name=args.suite,
@@ -212,9 +334,17 @@ def _run_openvla_libero(args: argparse.Namespace) -> None:
         camera_width=args.camera_width,
         seed=args.seed,
         trace_dir=args.trace_dir,
-        policy_id=args.policy_id,
+        policy_id=policy_id,
+        grounding_mode=args.grounding_mode,
     )
-    run_openvla_rollouts(args.benchmark, args.out, config, guarded=args.guarded)
+    run_openvla_rollouts(
+        args.benchmark,
+        args.out,
+        config,
+        guarded=args.guarded,
+        safety_policies_path=args.safety_policies,
+        resume=args.resume,
+    )
     print(f"wrote OpenVLA/LIBERO rollouts to {args.out}")
 
 

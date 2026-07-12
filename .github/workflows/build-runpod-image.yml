@@ -6,7 +6,7 @@ on:
       tag:
         description: "Image tag to publish"
         required: true
-        default: "v0.1"
+        default: "v0.5"
 
 permissions:
   contents: read

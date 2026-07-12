@@ -17,12 +17,13 @@ The adapter reads a TrustVLA benchmark JSONL, maps each case to a LIBERO task id
 the edited instruction to OpenVLA, steps the LIBERO environment, and writes one rollout
 record per case.
 
-Current first version:
+Current adapter:
 
 - records sparse task success from reward or `info["success"]`-style fields
 - records step count and action traces
-- records generic safety events if LIBERO info exposes collision/contact/unsafe keys
-- does not yet infer `selected_target`; that requires an object/contact detector
+- records MuJoCo geom contact pairs when the wrapped simulator exposes `sim`
+- keeps LIBERO's original `native_success` separate from edited `instruction_success`
+- runs a conservative object/contact detector over trace records
 
 ## Step 1: Export LIBERO Tasks
 
@@ -35,7 +36,8 @@ PYTHONPATH=src python -m trustvla.cli export-libero-seeds \
   --out data/libero_object_seed_draft.json
 ```
 
-This creates an annotation draft. Fill in:
+The exporter uses LIBERO's structured `bddl_utils.robosuite_parse_problem` output to
+prefill `possible_objects` and a target when `obj_of_interest` is unique. Review and fill:
 
 - `target_object`
 - `possible_objects`
@@ -48,10 +50,27 @@ Keep `metadata.libero_task_id`; it is needed to map benchmark cases back to LIBE
 
 ## Step 2: Generate TrustVLA-Pairs
 
+First create an independently reviewed safety-policy draft:
+
+```bash
+PYTHONPATH=src python -m trustvla.cli export-safety-policies \
+  --seed-tasks data/libero_object_seed_draft.json \
+  --out data/libero_object_safety_policies_draft.json
+```
+
 ```bash
 PYTHONPATH=src python -m trustvla.cli generate \
   --seed-tasks data/libero_object_seed_draft.json \
+  --init-states 3 \
   --out runs/libero_object/trustvla_pairs.jsonl
+```
+
+Validate before spending GPU time:
+
+```bash
+PYTHONPATH=src python -m trustvla.cli validate-benchmark \
+  --benchmark runs/libero_object/trustvla_pairs.jsonl \
+  --safety-policies data/libero_object_safety_policies_draft.json
 ```
 
 ## Step 3: Run OpenVLA Baseline
@@ -71,7 +90,22 @@ PYTHONPATH=src python -m trustvla.cli run-openvla-libero \
 Set `--unnorm-key` if the checkpoint requires a dataset-specific action normalization
 key.
 
-## Step 4: Run Guarded Rollouts
+## Step 4: Run Language-Emphasis Pilot And Guarded Rollouts
+
+Cheap grounding pilot:
+
+```bash
+PYTHONPATH=src python -m trustvla.cli run-openvla-libero \
+  --benchmark runs/libero_object/trustvla_pairs.jsonl \
+  --out runs/libero_object/openvla_language_emphasis.jsonl \
+  --model-path openvla/openvla-7b \
+  --suite libero_object --device cuda:0 \
+  --grounding-mode language_emphasis \
+  --trace-dir runs/libero_object/traces/language_emphasis
+```
+
+This prompt-only intervention is a pilot baseline, not a substitute for CAG/IGAR or
+another published grounding method in the paper-scale evaluation.
 
 ```bash
 PYTHONPATH=src python -m trustvla.cli run-openvla-libero \
@@ -82,12 +116,15 @@ PYTHONPATH=src python -m trustvla.cli run-openvla-libero \
   --device cuda:0 \
   --image-key agentview_image \
   --max-steps 300 \
+  --grounding-mode language_emphasis \
   --trace-dir runs/libero_object/traces/openvla_guarded \
-  --guarded
+  --guarded \
+  --safety-policies data/libero_object_safety_policies_draft.json
 ```
 
-The current coarse guard blocks no-op/clarification-required variants before rollout.
-Target/contact-level guarding needs a detector module and is the next development step.
+The gate reads the raw instruction and external safety policy. It does not read
+benchmark expected labels. It is currently a pre-execution semantic gate; per-step
+low-level motion shielding is not implemented.
 
 ## Step 5: Detect Object/Contact Events
 
@@ -110,9 +147,9 @@ PYTHONPATH=src python -m trustvla.cli detect-rollout-events \
   --out runs/libero_object/openvla_guarded_rollouts.detected.jsonl
 ```
 
-The detector is conservative. If the trace does not expose contact or grasp object names
-in `info`, the output will keep `selected_target` empty. In that case, inspect a trace
-JSON and add the relevant keys to `src/trustvla/detectors.py`.
+The detector is conservative. The adapter stores MuJoCo geom pairs under
+`trustvla_contacts` where possible. If `selected_target` remains empty, inspect a trace
+JSON and map the simulator's geom names before scoring the experiment.
 
 ## Step 6: Score And Compare
 
@@ -122,6 +159,18 @@ PYTHONPATH=src python -m trustvla.cli compare \
   --rollout baseline=runs/libero_object/openvla_rollouts.detected.jsonl \
   --rollout guarded=runs/libero_object/openvla_guarded_rollouts.detected.jsonl \
   --out runs/libero_object/openvla_comparison_report.md
+```
+
+Also report the new metrics:
+
+```bash
+PYTHONPATH=src python -m trustvla.cli tradeoff-score \
+  --benchmark runs/libero_object/trustvla_pairs.jsonl \
+  --rollouts runs/libero_object/openvla_rollouts.detected.jsonl
+
+PYTHONPATH=src python -m trustvla.cli pair-score \
+  --benchmark runs/libero_object/trustvla_pairs.jsonl \
+  --rollouts runs/libero_object/openvla_rollouts.detected.jsonl
 ```
 
 ## Expected Failure Modes

@@ -1,7 +1,7 @@
 [project]
 name = "trustvla"
-version = "0.1.0"
-description = "Paired instruction and safety evaluation scaffold for VLA policies."
+version = "0.2.0"
+description = "Selective-obedience evaluation and trusted-policy gating for VLA policies."
 requires-python = ">=3.10"
 dependencies = []
 
@@ -11,4 +11,3 @@ trustvla = "trustvla.cli:main"
 [tool.pytest.ini_options]
 pythonpath = ["src"]
 testpaths = ["tests"]
-

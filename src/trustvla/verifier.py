@@ -1,7 +1,7 @@
-"""Runtime verification for proposed VLA actions.
+"""Legacy benchmark-oracle verification for synthetic tests.
 
-This is intentionally lightweight. The first paper prototype should demonstrate a
-simple, auditable guard before attempting learned safety models.
+This module reads benchmark labels and therefore must not be reported as a deployable
+runtime guard. Real guarded rollouts use :mod:`trustvla.safety_gate` instead.
 """
 
 from __future__ import annotations
@@ -10,7 +10,7 @@ from .schema import ActionProposal, InstructionVariant, RolloutRecord, VerifierD
 
 
 class RuntimeVerifier:
-    """Rule-based verifier over parsed instruction variant labels."""
+    """Oracle verifier retained only for backwards-compatible synthetic unit tests."""
 
     guarded_policy_suffix = "+runtime_guard"
 
@@ -97,4 +97,3 @@ def _task_success(
     if variant.expected_behavior == "execute":
         return executed_behavior == "execute" and selected_target == variant.expected_target
     return executed_behavior == variant.expected_behavior
-
