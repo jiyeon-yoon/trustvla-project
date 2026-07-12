@@ -38,15 +38,15 @@ Check the image runtime:
 ```bash
 source /workspace/activate_trustvla.sh
 cd /workspace/trustvla-project
-PYTHONPATH=src python -m pytest -q
-PYTHONPATH=src python -m trustvla.cli doctor
+python -m pytest -q
+python -m trustvla.cli doctor
 nvidia-smi
 ```
 
 Export five LIBERO tasks and annotate the generated JSON manually:
 
 ```bash
-PYTHONPATH=src python -m trustvla.cli export-libero-seeds \
+python -m trustvla.cli export-libero-seeds \
   --suite libero_object --limit 5 \
   --out data/libero_object_seed_draft.json
 ```
@@ -57,7 +57,7 @@ Required manual fields include `target_object`, `possible_objects`, compatible
 Create and independently review a trusted policy draft:
 
 ```bash
-PYTHONPATH=src python -m trustvla.cli export-safety-policies \
+python -m trustvla.cli export-safety-policies \
   --seed-tasks data/libero_object_seed_draft.json \
   --out data/libero_object_safety_policies_draft.json
 ```
@@ -65,12 +65,12 @@ PYTHONPATH=src python -m trustvla.cli export-safety-policies \
 Generate and validate the benchmark:
 
 ```bash
-PYTHONPATH=src python -m trustvla.cli generate \
+python -m trustvla.cli generate \
   --seed-tasks data/libero_object_seed_draft.json \
   --init-states 3 \
   --out runs/libero_object/benchmark.jsonl
 
-PYTHONPATH=src python -m trustvla.cli validate-benchmark \
+python -m trustvla.cli validate-benchmark \
   --benchmark runs/libero_object/benchmark.jsonl \
   --safety-policies data/libero_object_safety_policies_draft.json
 ```
@@ -82,7 +82,7 @@ reported as task success.
 Run raw OpenVLA on a small budget first:
 
 ```bash
-PYTHONPATH=src python -m trustvla.cli run-openvla-libero \
+python -m trustvla.cli run-openvla-libero \
   --benchmark runs/libero_object/benchmark.jsonl \
   --out runs/libero_object/openvla_raw.jsonl \
   --model-path openvla/openvla-7b \
@@ -93,7 +93,7 @@ PYTHONPATH=src python -m trustvla.cli run-openvla-libero \
 Run the cheap prompt-grounding pilot:
 
 ```bash
-PYTHONPATH=src python -m trustvla.cli run-openvla-libero \
+python -m trustvla.cli run-openvla-libero \
   --benchmark runs/libero_object/benchmark.jsonl \
   --out runs/libero_object/openvla_language_emphasis.jsonl \
   --model-path openvla/openvla-7b \
@@ -108,7 +108,7 @@ grounding method such as CAG or IGAR.
 Run language emphasis plus the non-oracle safety-policy gate:
 
 ```bash
-PYTHONPATH=src python -m trustvla.cli run-openvla-libero \
+python -m trustvla.cli run-openvla-libero \
   --benchmark runs/libero_object/benchmark.jsonl \
   --out runs/libero_object/openvla_gated.jsonl \
   --model-path openvla/openvla-7b \
@@ -122,11 +122,11 @@ PYTHONPATH=src python -m trustvla.cli run-openvla-libero \
 Score language-safety trade-offs and pairwise action traces:
 
 ```bash
-PYTHONPATH=src python -m trustvla.cli tradeoff-score \
+python -m trustvla.cli tradeoff-score \
   --benchmark runs/libero_object/benchmark.jsonl \
   --rollouts runs/libero_object/openvla_raw.jsonl
 
-PYTHONPATH=src python -m trustvla.cli pair-score \
+python -m trustvla.cli pair-score \
   --benchmark runs/libero_object/benchmark.jsonl \
   --rollouts runs/libero_object/openvla_raw.jsonl \
   --difference-threshold 0.05 --prefix-steps 10

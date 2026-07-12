@@ -35,7 +35,7 @@
 
 처음부터 81개 case를 전부 실행하지 않습니다. 다음 순서를 지킵니다.
 
-1. Docker image `v0.5`에서 `pytest`와 `doctor` 확인.
+1. Docker image `v0.7`에서 `pytest`와 `doctor` 확인.
 2. LIBERO task 1개를 export하고 annotation 확인.
 3. `--init-states 1`, base case 1개, `--max-steps 50`으로 raw rollout.
 4. trace JSON에 image/action/reward와 `trustvla_contacts`가 기록되는지 확인.

@@ -8,7 +8,9 @@ environment that does not have LIBERO installed.
 Check the environment first:
 
 ```bash
-PYTHONPATH=src python -m trustvla.cli doctor
+source /workspace/activate_trustvla.sh
+cd /workspace/trustvla-project
+python -m trustvla.cli doctor
 ```
 
 ## What The Adapter Does
@@ -30,7 +32,7 @@ Current adapter:
 On the GPU/simulation machine:
 
 ```bash
-PYTHONPATH=src python -m trustvla.cli export-libero-seeds \
+python -m trustvla.cli export-libero-seeds \
   --suite libero_object \
   --limit 30 \
   --out data/libero_object_seed_draft.json
@@ -53,13 +55,13 @@ Keep `metadata.libero_task_id`; it is needed to map benchmark cases back to LIBE
 First create an independently reviewed safety-policy draft:
 
 ```bash
-PYTHONPATH=src python -m trustvla.cli export-safety-policies \
+python -m trustvla.cli export-safety-policies \
   --seed-tasks data/libero_object_seed_draft.json \
   --out data/libero_object_safety_policies_draft.json
 ```
 
 ```bash
-PYTHONPATH=src python -m trustvla.cli generate \
+python -m trustvla.cli generate \
   --seed-tasks data/libero_object_seed_draft.json \
   --init-states 3 \
   --out runs/libero_object/trustvla_pairs.jsonl
@@ -68,7 +70,7 @@ PYTHONPATH=src python -m trustvla.cli generate \
 Validate before spending GPU time:
 
 ```bash
-PYTHONPATH=src python -m trustvla.cli validate-benchmark \
+python -m trustvla.cli validate-benchmark \
   --benchmark runs/libero_object/trustvla_pairs.jsonl \
   --safety-policies data/libero_object_safety_policies_draft.json
 ```
@@ -76,7 +78,7 @@ PYTHONPATH=src python -m trustvla.cli validate-benchmark \
 ## Step 3: Run OpenVLA Baseline
 
 ```bash
-PYTHONPATH=src python -m trustvla.cli run-openvla-libero \
+python -m trustvla.cli run-openvla-libero \
   --benchmark runs/libero_object/trustvla_pairs.jsonl \
   --out runs/libero_object/openvla_rollouts.jsonl \
   --model-path openvla/openvla-7b \
@@ -95,7 +97,7 @@ key.
 Cheap grounding pilot:
 
 ```bash
-PYTHONPATH=src python -m trustvla.cli run-openvla-libero \
+python -m trustvla.cli run-openvla-libero \
   --benchmark runs/libero_object/trustvla_pairs.jsonl \
   --out runs/libero_object/openvla_language_emphasis.jsonl \
   --model-path openvla/openvla-7b \
@@ -108,7 +110,7 @@ This prompt-only intervention is a pilot baseline, not a substitute for CAG/IGAR
 another published grounding method in the paper-scale evaluation.
 
 ```bash
-PYTHONPATH=src python -m trustvla.cli run-openvla-libero \
+python -m trustvla.cli run-openvla-libero \
   --benchmark runs/libero_object/trustvla_pairs.jsonl \
   --out runs/libero_object/openvla_guarded_rollouts.jsonl \
   --model-path openvla/openvla-7b \
@@ -132,7 +134,7 @@ The first OpenVLA rollout records traces. Run the detector to infer selected obj
 contact violations from simulator info records:
 
 ```bash
-PYTHONPATH=src python -m trustvla.cli detect-rollout-events \
+python -m trustvla.cli detect-rollout-events \
   --benchmark runs/libero_object/trustvla_pairs.jsonl \
   --rollouts runs/libero_object/openvla_rollouts.jsonl \
   --out runs/libero_object/openvla_rollouts.detected.jsonl
@@ -141,7 +143,7 @@ PYTHONPATH=src python -m trustvla.cli detect-rollout-events \
 For guarded rollouts:
 
 ```bash
-PYTHONPATH=src python -m trustvla.cli detect-rollout-events \
+python -m trustvla.cli detect-rollout-events \
   --benchmark runs/libero_object/trustvla_pairs.jsonl \
   --rollouts runs/libero_object/openvla_guarded_rollouts.jsonl \
   --out runs/libero_object/openvla_guarded_rollouts.detected.jsonl
@@ -154,7 +156,7 @@ JSON and map the simulator's geom names before scoring the experiment.
 ## Step 6: Score And Compare
 
 ```bash
-PYTHONPATH=src python -m trustvla.cli compare \
+python -m trustvla.cli compare \
   --benchmark runs/libero_object/trustvla_pairs.jsonl \
   --rollout baseline=runs/libero_object/openvla_rollouts.detected.jsonl \
   --rollout guarded=runs/libero_object/openvla_guarded_rollouts.detected.jsonl \
@@ -164,11 +166,11 @@ PYTHONPATH=src python -m trustvla.cli compare \
 Also report the new metrics:
 
 ```bash
-PYTHONPATH=src python -m trustvla.cli tradeoff-score \
+python -m trustvla.cli tradeoff-score \
   --benchmark runs/libero_object/trustvla_pairs.jsonl \
   --rollouts runs/libero_object/openvla_rollouts.detected.jsonl
 
-PYTHONPATH=src python -m trustvla.cli pair-score \
+python -m trustvla.cli pair-score \
   --benchmark runs/libero_object/trustvla_pairs.jsonl \
   --rollouts runs/libero_object/openvla_rollouts.detected.jsonl
 ```

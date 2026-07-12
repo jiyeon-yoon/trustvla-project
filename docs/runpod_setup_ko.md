@@ -56,13 +56,13 @@ jiyeon-yoon/trustvla-project
 tag 입력칸에는 새 버전을 넣습니다.
 
 ```text
-v0.5
+v0.7
 ```
 
 빌드가 성공하면 RunPod에서 사용할 image는 다음입니다.
 
 ```text
-ghcr.io/jiyeon-yoon/trustvla-runpod:v0.5
+ghcr.io/jiyeon-yoon/trustvla-runpod:v0.7
 ```
 
 주의:
@@ -89,7 +89,7 @@ RunPod Pod를 실제로 켠 뒤 다시 확인해야 합니다.
 
 ## 4-1. Docker image에 들어있는 것과 없는 것
 
-`ghcr.io/jiyeon-yoon/trustvla-runpod:v0.5` image에 들어있는 것:
+`ghcr.io/jiyeon-yoon/trustvla-runpod:v0.7` image에 들어있는 것:
 
 ```text
 Python 3.10 virtual environment: /opt/trustvla-env
@@ -132,8 +132,8 @@ Templates
 입력:
 
 ```text
-Template name: trustvla-v0.5
-Container Image: ghcr.io/jiyeon-yoon/trustvla-runpod:v0.5
+Template name: trustvla-v0.7
+Container Image: ghcr.io/jiyeon-yoon/trustvla-runpod:v0.7
 ```
 
 Port:
@@ -159,7 +159,7 @@ RunPod에서 새 Pod를 만들 때:
 
 ```text
 GPU: RTX 4090
-Template: trustvla-v0.5
+Template: trustvla-v0.7
 Container disk: 50GB 권장
 Volume disk: 20GB 이상
 HTTP port: 8888
@@ -653,7 +653,7 @@ data/libero_object_safety_policies_draft.json
 
 ```text
 원인: custom image로 뜬 것이 아니거나 start script가 실행되지 않음
-확인: RunPod template의 container image가 ghcr.io/jiyeon-yoon/trustvla-runpod:v0.5인지 확인
+확인: RunPod template의 container image가 ghcr.io/jiyeon-yoon/trustvla-runpod:v0.7인지 확인
 ```
 
 ### VSCode가 raw IP로 접속 실패
