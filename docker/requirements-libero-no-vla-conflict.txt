@@ -10,6 +10,10 @@ robomimic==0.2.0
 einops==0.4.1
 thop==0.1.1-2209072238
 robosuite==1.4.0
+# robosuite 1.4.0 calls mujoco.mj_fullM with the MuJoCo 2.x binding signature.
+# Newer mujoco 3.x wheels changed the Python binding signature and fail during
+# LIBERO env reset with: mj_fullM(): incompatible function arguments.
+mujoco==2.3.7
 bddl==1.0.1
 future==0.18.2
 matplotlib==3.5.3

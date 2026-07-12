@@ -18,6 +18,7 @@ REQUIRED_IMPORTS = [
     ("transformers", "transformers"),
     ("PIL", "PIL"),
     ("numpy", "numpy"),
+    ("mujoco", "mujoco"),
 ]
 
 
@@ -47,6 +48,22 @@ def main() -> int:
         failures.append("libero")
     else:
         print("libero: basic import ok", flush=True)
+
+    try:
+        mujoco = importlib.import_module("mujoco")
+    except Exception as exc:  # noqa: BLE001 - already reported above, keep detail.
+        print(f"mujoco: compatibility check skipped: {exc!r}", flush=True)
+    else:
+        version = getattr(mujoco, "__version__", "unknown")
+        if not str(version).startswith("2.3."):
+            print(
+                "mujoco: incompatible version "
+                f"{version}; robosuite 1.4.0 / LIBERO expects mujoco 2.3.x",
+                flush=True,
+            )
+            failures.append("mujoco")
+        else:
+            print(f"mujoco: robosuite-compatible version ok ({version})", flush=True)
 
     if failures:
         print("missing runtime packages: " + ", ".join(failures), flush=True)
