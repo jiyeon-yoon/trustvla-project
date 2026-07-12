@@ -61,7 +61,7 @@ The full mirror is about 100GB. Do not download everything for the pilot.
 
 For RunPod and selective Hugging Face download details, see:
 
-- `docs/runpod_hf_workflow.md`
+- `docs/runpod_setup_ko.md`
 
 ## What To Download First
 

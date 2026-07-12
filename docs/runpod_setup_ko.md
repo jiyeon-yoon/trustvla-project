@@ -1,12 +1,14 @@
-# RunPod 처음부터 실행하기
+# RunPod 세팅과 첫 실험 실행
 
-이 문서는 TrustVLA Guard를 RunPod에서 돌리기 위한 순서입니다.
-목표는 매번 LIBERO/OpenVLA dependency를 손으로 설치하지 않고,
-GitHub Actions에서 만든 Docker image를 RunPod에서 바로 실행하는 것입니다.
+이 파일 하나만 보고 RunPod를 켜고, TrustVLA의 첫 실제 LIBERO/OpenVLA 실험까지
+진행하면 됩니다.
 
-## 0. 전체 구조
+지금은 헷갈리지 않도록 Pod 생성, SSH/VSCode 접속, image 확인, 실제 rollout 실행을
+이 파일 하나에 합쳤습니다. `docs/` 안의 RunPod 문서는 이제 이 파일 하나만 남겼습니다.
 
-사용할 구조:
+## 1. 전체 구조
+
+우리가 쓰는 방식은 다음입니다.
 
 ```text
 GitHub repository
@@ -16,31 +18,31 @@ GitHub repository
   -> /workspace에서 실험 실행
 ```
 
-중요한 점:
+역할:
 
 ```text
-Docker image: dependency와 프로젝트 기본 코드
-GitHub: 최신 소스코드
+Docker image: 설치 오래 걸리는 dependency 보관
+GitHub: 최신 소스코드 보관
 /workspace: RunPod에서 실행되는 작업 공간
-Network Volume 또는 외부 백업: 큰 데이터, 모델 캐시, 실험 결과 보관
+Network Volume 또는 외부 백업: 모델 캐시, 데이터셋, 결과 보관
 ```
 
-## 1. GitHub에 코드 push
+## 2. 로컬 Mac에서 코드 push
 
-로컬 Mac에서 먼저 변경사항을 push합니다.
+RunPod image를 만들기 전에 로컬 변경사항을 GitHub에 올립니다.
 
 ```bash
 cd /Users/yoon_jiyeon/Documents/Codex/2026-07-05/trustvla-project/trustvla-guard
 
 git status
-git add README.md README_kor.md docs/runpod_setup_ko.md docs/runpod_docker_image.md docker/verify_runtime.py
-git commit -m "Add Korean docs and RunPod setup guide"
+git add .
+git commit -m "Update TrustVLA RunPod workflow"
 git push
 ```
 
-이미 commit할 변경이 없다면 `git status`에서 clean이라고 나옵니다.
+이미 commit할 것이 없으면 `git status`가 clean이라고 나옵니다.
 
-## 2. GitHub Actions에서 Docker image 만들기
+## 3. GitHub Actions에서 Docker image 만들기
 
 GitHub 웹사이트에서:
 
@@ -53,13 +55,11 @@ jiyeon-yoon/trustvla-project
 
 tag 입력칸에는 새 버전을 넣습니다.
 
-예:
-
 ```text
 v0.5
 ```
 
-빌드가 성공하면 사용할 image는 다음입니다.
+빌드가 성공하면 RunPod에서 사용할 image는 다음입니다.
 
 ```text
 ghcr.io/jiyeon-yoon/trustvla-runpod:v0.5
@@ -68,11 +68,11 @@ ghcr.io/jiyeon-yoon/trustvla-runpod:v0.5
 주의:
 
 ```text
-v0.5가 성공하기 전까지 v0.1 같은 이전 성공 image는 지우지 않는 것이 좋습니다.
+새 버전이 성공하기 전까지 이전 성공 image는 지우지 않습니다.
 새 image가 실패하면 이전 image가 fallback입니다.
 ```
 
-## 3. image build가 확인하는 것
+## 4. image build가 확인하는 것
 
 Docker image build 단계에서 확인하는 것:
 
@@ -81,37 +81,95 @@ Docker image build 단계에서 확인하는 것:
 2. pytest 통과
 3. trustvla.cli doctor 실행
 4. torch / transformers / PIL / numpy import 확인
-5. LIBERO package 설치 여부와 basic import 확인
+5. LIBERO package basic import 확인
 ```
 
-단, LIBERO full simulator는 MuJoCo/graphics/runtime 환경 영향을 받습니다.
-그래서 최종 확인은 RunPod에서 Pod를 켠 뒤 다시 합니다.
+단, LIBERO full simulator는 MuJoCo/graphics/runtime 환경 영향을 받습니다. 그래서
+RunPod Pod를 실제로 켠 뒤 다시 확인해야 합니다.
+
+## 4-1. Docker image에 들어있는 것과 없는 것
+
+`ghcr.io/jiyeon-yoon/trustvla-runpod:v0.5` image에 들어있는 것:
+
+```text
+Python 3.10 virtual environment: /opt/trustvla-env
+PyTorch / torchvision CUDA wheels
+OpenVLA Hugging Face runtime dependencies
+LIBERO code: /opt/LIBERO
+LIBERO Python package editable install
+TrustVLA code copy: /opt/trustvla-project
+RunPod startup script: /start-trustvla.sh
+```
+
+image에 들어있지 않은 것:
+
+```text
+OpenVLA 7B model weights
+LIBERO datasets
+실험 결과
+논문용 checkpoint
+```
+
+큰 파일은 `/workspace`, Network Volume, Hugging Face cache, 또는 외부 저장소에 둡니다.
+OpenVLA weight는 기본적으로 아래에 cache됩니다.
+
+```text
+/workspace/.cache/huggingface
+```
+
+Docker Desktop이 있는 로컬 Mac에서 직접 build할 수도 있지만, 지금 기본 흐름은
+GitHub Actions로 GHCR image를 만드는 것입니다.
+
+## 5. RunPod custom template 만들기
+
+RunPod에서 먼저 custom template을 만듭니다.
+
+```text
+Templates
+-> New Template 또는 Create Template
+```
+
+입력:
+
+```text
+Template name: trustvla-v0.5
+Container Image: ghcr.io/jiyeon-yoon/trustvla-runpod:v0.5
+```
+
+Port:
+
+```text
+HTTP Port: 8888
+TCP Port: 22
+```
+
+Start command 또는 Docker command 칸은 비워둬도 됩니다. 꼭 입력해야 하면:
 
 ```bash
-source /workspace/activate_trustvla.sh
-PYTHONPATH=src python -m trustvla.cli doctor
-PYTHONPATH=src python -m pytest -q
+/start-trustvla.sh
 ```
 
-## 4. RunPod에서 Pod 생성
+만약 image pull authorization 오류가 나면 GHCR package가 private일 수 있습니다.
+처음에는 GitHub Packages에서 `ghcr.io/jiyeon-yoon/trustvla-runpod` package를 public으로
+바꾸는 것이 가장 단순합니다.
 
-RunPod에서 새 Pod를 만듭니다.
+## 6. 새 Pod 생성
 
-권장 시작 설정:
+RunPod에서 새 Pod를 만들 때:
 
 ```text
 GPU: RTX 4090
-Container image: ghcr.io/jiyeon-yoon/trustvla-runpod:v0.5
-Container disk: 최소 20GB, 여유 있으면 50GB
-Volume disk: smoke test만 할 거면 20GB
+Template: trustvla-v0.5
+Container disk: 50GB 권장
+Volume disk: 20GB 이상
 HTTP port: 8888
 TCP port: 22
 ```
 
-Network Volume이 선택되지 않아도 당장 smoke test는 가능합니다.
-다만 Network Volume이 없으면 Pod를 terminate할 때 `/workspace` 내용이 삭제됩니다.
+Network Volume이 없어도 첫 smoke test는 가능합니다. 다만 Network Volume이 없으면
+Pod를 terminate할 때 `/workspace` 내용이 삭제됩니다.
 
-반복 실험을 할 때는 다음이 좋습니다.
+반복 실험에 가장 좋은 구조:
 
 ```text
 Docker image: dependency 보관
@@ -119,28 +177,9 @@ GitHub: 코드 보관
 Network Volume 또는 외부 저장소: LIBERO dataset, HF model cache, runs 결과 보관
 ```
 
-## 5. RunPod에서 custom image 입력 위치
+## 7. Pod가 제대로 뜬 것인지 확인
 
-RunPod 화면에서 template/custom template을 만들 때 `Container Image` 또는
-`Image Name` 입력칸에 아래를 넣습니다.
-
-```text
-ghcr.io/jiyeon-yoon/trustvla-runpod:v0.5
-```
-
-만약 image pull이 실패하면서 authorization 오류가 나면 GHCR package가 private일 수 있습니다.
-그 경우 둘 중 하나가 필요합니다.
-
-```text
-1. GitHub Packages에서 ghcr.io/jiyeon-yoon/trustvla-runpod package를 public으로 바꾸기
-2. RunPod template에 registry credential 설정하기
-```
-
-처음에는 public package가 가장 단순합니다.
-
-## 6. Pod가 켜진 뒤 Web Terminal에서 확인
-
-RunPod Pod 상세 화면에서:
+RunPod에서:
 
 ```text
 Connect
@@ -151,39 +190,58 @@ Connect
 터미널에서:
 
 ```bash
-ls /workspace
 source /workspace/activate_trustvla.sh
 cd /workspace/trustvla-project
 
-python --version
-PYTHONPATH=src python -m pytest -q
-PYTHONPATH=src python -m trustvla.cli doctor
+python -m pytest -q
+python -m trustvla.cli doctor
+nvidia-smi
 ```
 
 기대 결과:
 
 ```text
-pytest: passed
+pytest passed
+libero: ok
 torch: ok
 transformers: ok
 PIL: ok
 numpy: ok
+GPU visible in nvidia-smi
 ```
 
-`/workspace/activate_trustvla.sh`가 없으면 custom image로 뜬 것이 아닐 가능성이 큽니다.
-그 경우 Pod template의 container image가 맞는지 다시 확인합니다.
+`/workspace/activate_trustvla.sh`가 없으면 custom image로 뜬 것이 아닙니다.
+Pod template의 `Container Image`가 맞는지 다시 확인합니다.
 
-## 7. SSH로 접속하기
+만약 `/opt/LIBERO`와 `pip show libero`는 보이는데 `doctor`에서 `libero: missing`이
+나오면, 대부분 `PYTHONPATH=src python ...`처럼 실행해서 activate script의
+`PYTHONPATH`를 덮어쓴 것입니다. 현재 Pod에서는 아래처럼 바로 고칩니다.
 
-RunPod Pod 상세 화면의 `Connect` 탭에서 `SSH over exposed TCP`를 봅니다.
+```bash
+sed -i 's|export PYTHONPATH=.*|export PYTHONPATH=/workspace/trustvla-project/src:/opt/LIBERO|' /workspace/activate_trustvla.sh
+source /workspace/activate_trustvla.sh
+
+python -m trustvla.cli doctor
+python - <<'PY'
+import libero
+print(libero.__file__)
+PY
+```
+
+RunPod에서는 `source /workspace/activate_trustvla.sh` 이후 `PYTHONPATH=src`를 앞에
+붙이지 않습니다.
+
+## 8. SSH로 접속하기
+
+RunPod Pod 상세 화면의 `Connect` 탭에서 `SSH over exposed TCP` 명령어를 봅니다.
 예시는 다음처럼 생겼습니다.
 
 ```bash
 ssh root@47.47.180.44 -p 14067 -i ~/.ssh/id_ed25519
 ```
 
-실제 IP와 port는 Pod를 새로 만들 때마다 달라질 수 있습니다.
-RunPod 화면에 보이는 값을 그대로 씁니다.
+실제 IP와 port는 Pod를 새로 만들 때마다 달라질 수 있습니다. RunPod 화면에 보이는
+값을 그대로 씁니다.
 
 Mac 터미널에서:
 
@@ -203,8 +261,8 @@ Are you sure you want to continue connecting (yes/no/[fingerprint])?
 yes
 ```
 
-비밀번호를 물어보면 보통 SSH key가 적용되지 않은 것입니다.
-RunPod template에 Mac의 public key가 들어갔는지 확인해야 합니다.
+비밀번호를 물어보면 보통 SSH key가 적용되지 않은 것입니다. RunPod SSH key 설정에
+Mac public key가 들어갔는지 확인합니다.
 
 Mac public key 확인:
 
@@ -212,11 +270,9 @@ Mac public key 확인:
 cat ~/.ssh/id_ed25519.pub
 ```
 
-## 8. VSCode Remote SSH 연결
+## 9. VSCode Remote SSH 연결
 
-VSCode에서 `Remote - SSH` extension을 설치합니다.
-
-그 다음 Mac의 SSH config를 엽니다.
+Mac에서 SSH config를 엽니다.
 
 ```bash
 code ~/.ssh/config
@@ -257,7 +313,7 @@ Command Palette
 중요:
 
 ```text
-raw IP만 선택하지 말고 runpod-trustvla host를 선택해야 합니다.
+raw IP를 선택하지 말고 runpod-trustvla host를 선택합니다.
 그래야 port와 key 설정이 같이 적용됩니다.
 ```
 
@@ -267,96 +323,86 @@ raw IP만 선택하지 말고 runpod-trustvla host를 선택해야 합니다.
 /workspace/trustvla-project
 ```
 
-## 9. 첫 smoke test 실행
+## 10. 첫 실험 크기
 
-RunPod에서:
-
-```bash
-source /workspace/activate_trustvla.sh
-cd /workspace/trustvla-project
-
-PYTHONPATH=src python -m pytest -q
-PYTHONPATH=src python -m trustvla.cli doctor
-```
-
-선택적 복종 benchmark 생성과 검증:
-
-```bash
-PYTHONPATH=src python -m trustvla.cli generate \
-  --seed-tasks data/seed_tasks.json \
-  --out runs/smoke/benchmark.jsonl
-
-PYTHONPATH=src python -m trustvla.cli validate-benchmark \
-  --benchmark runs/smoke/benchmark.jsonl \
-  --safety-policies data/safety_policies.json
-```
-
-synthetic trade-off pilot:
-
-```bash
-PYTHONPATH=src python -m trustvla.cli tradeoff-dummy-rollouts \
-  --benchmark runs/smoke/benchmark.jsonl \
-  --safety-policies data/safety_policies.json \
-  --out-dir runs/smoke
-```
-
-비교 리포트:
-
-```bash
-PYTHONPATH=src python -m trustvla.cli compare \
-  --benchmark runs/smoke/benchmark.jsonl \
-  --rollout visual=runs/smoke/dummy_visual_prior.jsonl \
-  --rollout grounded=runs/smoke/dummy_grounded.jsonl \
-  --rollout guarded=runs/smoke/dummy_grounded_guarded.jsonl \
-  --out runs/smoke/selective_obedience_report.md
-```
-
-확인할 파일:
+처음부터 큰 실험을 돌리지 않습니다. 첫 RunPod 세션 목표는 아래입니다.
 
 ```text
-runs/smoke/selective_obedience_report.md
+LIBERO task: 1개
+init state: 1개
+rollout 종류: raw OpenVLA 먼저 1개
+max steps: 50
 ```
 
-이 report는 metric 연결을 검사하는 합성 결과이며 논문 결과가 아닙니다.
+첫 성공 기준:
 
-## 10. LIBERO 데이터 다운로드
+```text
+runs/pilot/openvla_raw.jsonl
+runs/pilot/traces/raw/<case_id>.json
+```
 
-처음에는 작은 suite만 받습니다.
+이 두 파일이 생기고 trace 안에 action/reward/contact 정보가 들어오면 1차 성공입니다.
+
+## 10-1. LIBERO 데이터와 Hugging Face 다운로드
+
+전체 LIBERO dataset mirror를 받을 필요는 없습니다. 첫 pilot은 `libero_object`만 씁니다.
+
+Hugging Face mirror:
+
+```text
+https://huggingface.co/datasets/yifengzhu-hf/LIBERO-datasets
+```
+
+첫 다운로드는 dry run부터 봅니다.
 
 ```bash
 source /workspace/activate_trustvla.sh
 cd /workspace/trustvla-project
 
-PYTHONPATH=src python -m trustvla.cli download-libero-hf \
-  --suite libero_object \
-  --local-dir /workspace/LIBERO-datasets
-```
-
-dry run만 보고 싶으면:
-
-```bash
-PYTHONPATH=src python -m trustvla.cli download-libero-hf \
+python -m trustvla.cli download-libero-hf \
   --suite libero_object \
   --local-dir /workspace/LIBERO-datasets \
   --dry-run
 ```
 
-## 11. LIBERO seed task export
+괜찮으면 실제 다운로드:
 
 ```bash
-PYTHONPATH=src python -m trustvla.cli export-libero-seeds \
+python -m trustvla.cli download-libero-hf \
   --suite libero_object \
-  --limit 5 \
+  --local-dir /workspace/LIBERO-datasets
+```
+
+LIBERO 공식 script를 써야 하는 환경이면:
+
+```bash
+cd /opt/LIBERO
+python benchmark_scripts/download_libero_datasets.py \
+  --datasets libero_object \
+  --use-huggingface
+```
+
+처음부터 `all`을 받지 않습니다. pipeline이 돈 뒤에 `libero_spatial`을 추가합니다.
+
+## 11. LIBERO seed 1개 export
+
+```bash
+source /workspace/activate_trustvla.sh
+cd /workspace/trustvla-project
+
+python -m trustvla.cli export-libero-seeds \
+  --suite libero_object \
+  --limit 1 \
   --out data/libero_object_seed_draft.json
 ```
 
-처음에는 `--limit 5`로만 확인합니다.
-성공하면 나중에 `--limit 30`으로 늘립니다.
+생성된 파일 확인:
 
-생성된 파일에서 다음 field는 사람이 확인/보강해야 할 수 있습니다.
+```bash
+python -m json.tool data/libero_object_seed_draft.json | head -120
+```
 
-`possible_objects`와 단일 target 후보는 LIBERO 공식 BDDL parser 결과로 자동
-채워집니다. 자동값도 반드시 장면과 대조합니다.
+수동으로 확인해야 하는 필드:
 
 ```text
 target_object
@@ -365,66 +411,135 @@ distractor_objects
 absent_objects
 ambiguous_targets
 safety_hazards
+metadata.libero_task_id
 ```
 
-## 12. Safety policy, paired benchmark 생성과 검증
+자동 export가 일부 필드를 채워도 그대로 믿지 않습니다. 특히 `safety_hazards`는 논문의
+trusted safety policy가 될 수 있으므로 사람이 확인해야 합니다.
 
-seed draft의 annotation을 마친 뒤 policy draft를 만듭니다.
+## 12. Safety policy draft 생성
 
 ```bash
-PYTHONPATH=src python -m trustvla.cli export-safety-policies \
+python -m trustvla.cli export-safety-policies \
   --seed-tasks data/libero_object_seed_draft.json \
   --out data/libero_object_safety_policies_draft.json
 ```
 
-`DRAFT` policy는 다른 팀원이 독립적으로 검토해야 합니다. 그 다음:
+확인:
 
 ```bash
-PYTHONPATH=src python -m trustvla.cli generate \
-  --seed-tasks data/libero_object_seed_draft.json \
-  --init-states 3 \
-  --out runs/libero_object/trustvla_pairs.jsonl
+python -m json.tool data/libero_object_safety_policies_draft.json | head -160
+```
 
-PYTHONPATH=src python -m trustvla.cli validate-benchmark \
-  --benchmark runs/libero_object/trustvla_pairs.jsonl \
+여기서 protected object가 실제 장면의 hazard와 맞는지 봅니다. 이 파일은 benchmark
+정답이 아니라, runtime gate가 읽는 별도 safety policy입니다.
+
+## 13. Benchmark 생성과 검증
+
+```bash
+mkdir -p runs/pilot
+
+python -m trustvla.cli generate \
+  --seed-tasks data/libero_object_seed_draft.json \
+  --init-states 1 \
+  --out runs/pilot/benchmark.jsonl
+```
+
+검증:
+
+```bash
+python -m trustvla.cli validate-benchmark \
+  --benchmark runs/pilot/benchmark.jsonl \
   --safety-policies data/libero_object_safety_policies_draft.json
 ```
 
-## 13. OpenVLA raw rollout
+`native_success_not_valid` warning은 target/spatial edit에서 나올 수 있습니다. 이 warning은
+"LIBERO 원래 reward를 그대로 counterfactual success로 쓰면 안 된다"는 뜻입니다. 첫 raw
+rollout 디버깅 단계에서는 괜찮지만, 논문 결과에서는 별도 evaluator가 필요합니다.
 
-처음에는 작은 값으로 실행합니다.
+## 14. Raw OpenVLA rollout 1개 실행
+
+처음에는 guard와 grounding prompt를 끄고 raw OpenVLA만 돌립니다.
 
 ```bash
-PYTHONPATH=src python -m trustvla.cli run-openvla-libero \
-  --benchmark runs/libero_object/trustvla_pairs.jsonl \
-  --out runs/libero_object/openvla_rollouts.jsonl \
+python -m trustvla.cli run-openvla-libero \
+  --benchmark runs/pilot/benchmark.jsonl \
+  --out runs/pilot/openvla_raw.jsonl \
   --model-path openvla/openvla-7b \
   --suite libero_object \
   --device cuda:0 \
   --max-steps 50 \
-  --trace-dir runs/libero_object/traces/openvla
+  --trace-dir runs/pilot/traces/raw
 ```
 
-## 14. OpenVLA language-emphasis pilot + Guard rollout
-
-먼저 저비용 grounding pilot을 실행합니다. 이는 가설 확인용 prompt baseline입니다.
+중간에 끊겼으면 같은 명령 끝에 `--resume`을 붙입니다.
 
 ```bash
-PYTHONPATH=src python -m trustvla.cli run-openvla-libero \
-  --benchmark runs/libero_object/trustvla_pairs.jsonl \
-  --out runs/libero_object/openvla_language_emphasis.jsonl \
+python -m trustvla.cli run-openvla-libero \
+  --benchmark runs/pilot/benchmark.jsonl \
+  --out runs/pilot/openvla_raw.jsonl \
   --model-path openvla/openvla-7b \
-  --suite libero_object --device cuda:0 --max-steps 50 \
-  --grounding-mode language_emphasis \
-  --trace-dir runs/libero_object/traces/language_emphasis
+  --suite libero_object \
+  --device cuda:0 \
+  --max-steps 50 \
+  --trace-dir runs/pilot/traces/raw \
+  --resume
 ```
 
-같은 grounding condition에 safety policy gate를 적용합니다.
+## 15. 결과 파일 확인
 
 ```bash
-PYTHONPATH=src python -m trustvla.cli run-openvla-libero \
-  --benchmark runs/libero_object/trustvla_pairs.jsonl \
-  --out runs/libero_object/openvla_guarded_rollouts.jsonl \
+ls -lh runs/pilot
+ls -lh runs/pilot/traces/raw
+head -1 runs/pilot/openvla_raw.jsonl
+```
+
+trace JSON 하나를 확인합니다.
+
+```bash
+python -m json.tool runs/pilot/traces/raw/*.json | head -200
+```
+
+확인할 것:
+
+```text
+case_id가 benchmark case와 연결되는가
+actions가 기록되는가
+reward 또는 success 정보가 들어오는가
+native_success가 기록되는가
+instruction_success가 기록되는가
+trustvla_contacts 또는 contact 관련 정보가 기록되는가
+```
+
+여기까지 성공하면 RunPod 세션 1차 목표는 달성입니다.
+
+## 16. Language emphasis 실행
+
+raw가 성공한 뒤에만 실행합니다.
+
+```bash
+python -m trustvla.cli run-openvla-libero \
+  --benchmark runs/pilot/benchmark.jsonl \
+  --out runs/pilot/openvla_language_emphasis.jsonl \
+  --model-path openvla/openvla-7b \
+  --suite libero_object \
+  --device cuda:0 \
+  --max-steps 50 \
+  --grounding-mode language_emphasis \
+  --trace-dir runs/pilot/traces/language_emphasis
+```
+
+`language_emphasis`는 cheap pilot입니다. 논문 본실험에서는 CAG/IGAR 같은 재현 가능한
+grounding baseline을 추가해야 합니다.
+
+## 17. Safety gate 실행
+
+language emphasis가 성공한 뒤 실행합니다.
+
+```bash
+python -m trustvla.cli run-openvla-libero \
+  --benchmark runs/pilot/benchmark.jsonl \
+  --out runs/pilot/openvla_gated.jsonl \
   --model-path openvla/openvla-7b \
   --suite libero_object \
   --device cuda:0 \
@@ -432,94 +547,107 @@ PYTHONPATH=src python -m trustvla.cli run-openvla-libero \
   --grounding-mode language_emphasis \
   --guarded \
   --safety-policies data/libero_object_safety_policies_draft.json \
-  --trace-dir runs/libero_object/traces/openvla_guarded
+  --trace-dir runs/pilot/traces/gated
 ```
 
-## 15. Detector와 compare
+이 gate는 benchmark의 `expected_behavior`나 `safety_class`를 보지 않습니다. raw
+instruction과 별도 safety policy만 보고 차단 여부를 결정합니다.
 
-raw rollout detector:
+## 18. 점수 계산
+
+raw rollout:
 
 ```bash
-PYTHONPATH=src python -m trustvla.cli detect-rollout-events \
-  --benchmark runs/libero_object/trustvla_pairs.jsonl \
-  --rollouts runs/libero_object/openvla_rollouts.jsonl \
-  --out runs/libero_object/openvla_rollouts.detected.jsonl
+python -m trustvla.cli tradeoff-score \
+  --benchmark runs/pilot/benchmark.jsonl \
+  --rollouts runs/pilot/openvla_raw.jsonl
+
+python -m trustvla.cli pair-score \
+  --benchmark runs/pilot/benchmark.jsonl \
+  --rollouts runs/pilot/openvla_raw.jsonl \
+  --difference-threshold 0.05 \
+  --prefix-steps 10
 ```
 
-guarded rollout detector:
+세 조건 비교 report:
 
 ```bash
-PYTHONPATH=src python -m trustvla.cli detect-rollout-events \
-  --benchmark runs/libero_object/trustvla_pairs.jsonl \
-  --rollouts runs/libero_object/openvla_guarded_rollouts.jsonl \
-  --out runs/libero_object/openvla_guarded_rollouts.detected.jsonl
+python -m trustvla.cli compare \
+  --benchmark runs/pilot/benchmark.jsonl \
+  --rollout raw=runs/pilot/openvla_raw.jsonl \
+  --rollout language=runs/pilot/openvla_language_emphasis.jsonl \
+  --rollout gated=runs/pilot/openvla_gated.jsonl \
+  --out runs/pilot/comparison_report.md
 ```
 
-비교 리포트:
+## 19. Jupyter Notebook으로 실행
 
-```bash
-PYTHONPATH=src python -m trustvla.cli compare \
-  --benchmark runs/libero_object/trustvla_pairs.jsonl \
-  --rollout baseline=runs/libero_object/openvla_rollouts.detected.jsonl \
-  --rollout guarded=runs/libero_object/openvla_guarded_rollouts.detected.jsonl \
-  --out runs/libero_object/openvla_comparison_report.md
-```
-
-새 trade-off와 실제 action-pair metric:
-
-```bash
-PYTHONPATH=src python -m trustvla.cli tradeoff-score \
-  --benchmark runs/libero_object/trustvla_pairs.jsonl \
-  --rollouts runs/libero_object/openvla_rollouts.detected.jsonl
-
-PYTHONPATH=src python -m trustvla.cli pair-score \
-  --benchmark runs/libero_object/trustvla_pairs.jsonl \
-  --rollouts runs/libero_object/openvla_rollouts.detected.jsonl \
-  --difference-threshold 0.05 --prefix-steps 10
-```
-
-rollout은 episode마다 즉시 저장됩니다. 연결이 끊겼다면 기존 명령 마지막에
-`--resume`을 추가하면 완료된 case는 다시 실행하지 않습니다.
-
-논문 table 후보:
+RunPod Jupyter에서 아래 파일을 열 수 있습니다.
 
 ```text
-runs/libero_object/openvla_comparison_report.md
+/workspace/trustvla-project/notebooks/runpod_libero_openvla.ipynb
 ```
 
-## 16. Pod 종료 전 해야 할 일
+처음 값은 다음처럼 작게 둡니다.
 
-Terminate하면 `/workspace`가 사라질 수 있습니다.
-종료 전 아래를 확인합니다.
+```python
+LIMIT = 1
+INIT_STATES = 1
+MAX_STEPS = 50
+RUN_ROLLOUTS = True
+```
+
+노트북은 편하지만, 에러가 났을 때는 terminal 명령어가 더 추적하기 쉽습니다.
+
+## 20. Pod 종료 전 체크리스트
+
+Network Volume 없이 Pod를 terminate하면 `/workspace` 내용이 사라집니다.
+
+종료 전 확인:
 
 ```bash
 cd /workspace/trustvla-project
+ls -lh runs/pilot
 git status
 ```
 
-코드 변경이 있으면:
-
-```bash
-git add .
-git commit -m "Add RunPod experiment results"
-git push
-```
-
-결과 파일은 너무 크면 GitHub에 바로 올리지 말고 따로 백업합니다.
-
-중요 결과:
+보관해야 하는 파일:
 
 ```text
-runs/libero_object/openvla_rollouts.jsonl
-runs/libero_object/openvla_guarded_rollouts.jsonl
-runs/libero_object/openvla_comparison_report.md
-runs/libero_object/traces/
+runs/pilot/*.jsonl
+runs/pilot/**/*.json
+runs/pilot/*.md
+data/libero_object_seed_draft.json
+data/libero_object_safety_policies_draft.json
 ```
 
-비용을 아끼려면 작업이 끝난 뒤 Pod는 stop이 아니라 terminate합니다.
+코드 변경이 있으면 GitHub에 push하고, 결과 파일은 로컬로 가져오거나 별도 저장소에
+백업합니다. 비용을 아끼려면 작업이 끝난 뒤 Pod는 stop이 아니라 terminate합니다.
 단, terminate 전에 결과 백업이 끝나 있어야 합니다.
 
-## 17. 자주 나는 문제
+## 21. 다음 확장 기준
+
+아래가 모두 확인되면 실험 크기를 키웁니다.
+
+```text
+1. doctor에서 libero/torch/transformers가 ok
+2. raw OpenVLA 1개 rollout 성공
+3. trace JSON에 action/reward/contact 정보가 있음
+4. image key와 action unnormalization 문제가 없음
+5. gated condition이 benchmark label 없이 동작함
+```
+
+그 다음 확장 순서:
+
+```text
+1 task x 1 init
+5 task x 1 init
+5 task x 3 init
+20-30 task x 3 init
+두 번째 VLA 또는 grounding baseline 추가
+```
+
+## 22. 자주 나는 문제
 
 ### activate_trustvla.sh가 없다
 
@@ -560,5 +688,5 @@ runs/libero_object/traces/
 
 ```text
 원인: LIBERO rollout trace의 info key와 detector가 기대하는 key가 다름
-해결: runs/libero_object/traces/*.json을 보고 detectors.py를 실제 key에 맞게 조정
+해결: runs/pilot/traces/*.json을 보고 detectors.py를 실제 key에 맞게 조정
 ```

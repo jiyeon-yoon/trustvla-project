@@ -43,7 +43,8 @@ def main() -> int:
     try:
         importlib.import_module("libero")
     except Exception as exc:  # noqa: BLE001 - build-time diagnostic.
-        print(f"libero: import warning: {exc!r}", flush=True)
+        print(f"libero: basic import failed: {exc!r}", flush=True)
+        failures.append("libero")
     else:
         print("libero: basic import ok", flush=True)
 

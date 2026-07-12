@@ -11,7 +11,7 @@ cat >/workspace/activate_trustvla.sh <<'EOF'
 #!/usr/bin/env bash
 source /opt/trustvla-env/bin/activate
 cd /workspace/trustvla-project
-export PYTHONPATH=/workspace/trustvla-project/src
+export PYTHONPATH=/workspace/trustvla-project/src:/opt/LIBERO
 export HF_HOME=/workspace/.cache/huggingface
 export MUJOCO_GL=egl
 EOF

@@ -20,7 +20,7 @@ ENV VIRTUAL_ENV=/opt/trustvla-env
 ENV PATH="/opt/trustvla-env/bin:${PATH}"
 ENV HF_HOME=/workspace/.cache/huggingface
 ENV MUJOCO_GL=egl
-ENV PYTHONPATH=/workspace/trustvla-project/src:/opt/trustvla-project/src
+ENV PYTHONPATH=/workspace/trustvla-project/src:/opt/trustvla-project/src:/opt/LIBERO
 
 ARG TORCH_INDEX_URL=https://download.pytorch.org/whl/cu118
 ARG TORCH_VERSION=2.2.0
@@ -75,9 +75,9 @@ RUN git clone --depth 1 --branch "${LIBERO_REF}" "${LIBERO_REPO}" /opt/LIBERO &&
 WORKDIR /opt/trustvla-project
 COPY . /opt/trustvla-project
 RUN pip install --no-cache-dir -e /opt/trustvla-project && \
-    PYTHONPATH=/opt/trustvla-project/src python -m pytest -q && \
-    PYTHONPATH=/opt/trustvla-project/src python -m trustvla.cli doctor && \
-    PYTHONPATH=/opt/trustvla-project/src python docker/verify_runtime.py
+    PYTHONPATH=/opt/trustvla-project/src:/opt/LIBERO python -m pytest -q && \
+    PYTHONPATH=/opt/trustvla-project/src:/opt/LIBERO python -m trustvla.cli doctor && \
+    PYTHONPATH=/opt/trustvla-project/src:/opt/LIBERO python docker/verify_runtime.py
 
 COPY docker/start-trustvla.sh /start-trustvla.sh
 RUN chmod +x /start-trustvla.sh && \
