@@ -120,7 +120,69 @@ OpenVLA weight는 기본적으로 아래에 cache됩니다.
 Docker Desktop이 있는 로컬 Mac에서 직접 build할 수도 있지만, 지금 기본 흐름은
 GitHub Actions로 GHCR image를 만드는 것입니다.
 
-## 5. RunPod custom template 만들기
+## 5. Pod 만들기 전에 SSH public key 등록
+
+SSH로 붙을 계획이면 **Pod 생성 전에** RunPod 계정에 Mac의 SSH public key를 등록합니다.
+Pod를 먼저 만든 뒤 key를 추가하면 이미 떠 있는 Pod에 바로 반영되지 않을 수 있습니다.
+
+Mac 터미널에서 public key를 확인합니다.
+
+```bash
+cat ~/.ssh/id_ed25519.pub
+```
+
+출력은 반드시 한 줄 전체여야 하고 보통 이렇게 시작합니다.
+
+```text
+ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAI... yoon_jiyeon@...
+```
+
+RunPod 웹사이트에서:
+
+```text
+Settings
+-> SSH public keys
+```
+
+스크린샷처럼 큰 입력칸이 맞습니다. 이미 다른 key가 있으면 기존 줄을 지우지 말고,
+새 줄에 Mac에서 복사한 public key 전체를 붙여넣습니다.
+
+```text
+기존키...
+ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAI... yoon_jiyeon@...
+```
+
+그 다음 `Update public key`를 누릅니다.
+
+주의:
+
+```text
+root@... password:
+```
+
+여기에 public key를 붙이는 것이 아닙니다. 이 prompt가 나온다는 것은 SSH key 인증이
+실패했다는 뜻입니다.
+
+이미 Pod를 만든 뒤라면 두 가지 선택지가 있습니다.
+
+```text
+가장 확실한 방법: SSH public key 저장 후 Pod를 새로 생성
+현재 Pod를 살리는 방법: Web Terminal에서 authorized_keys에 public key를 직접 추가
+```
+
+현재 Pod를 살릴 때는 RunPod Web Terminal에서 아래를 실행합니다. `PASTE_PUBLIC_KEY_HERE`
+자리에 `ssh-ed25519 ...` 전체 한 줄을 넣습니다.
+
+```bash
+mkdir -p /root/.ssh
+chmod 700 /root/.ssh
+echo 'PASTE_PUBLIC_KEY_HERE' >> /root/.ssh/authorized_keys
+chmod 600 /root/.ssh/authorized_keys
+```
+
+그 다음 Mac 터미널에서 SSH를 다시 시도합니다.
+
+## 6. RunPod custom template 만들기
 
 RunPod에서 먼저 custom template을 만듭니다.
 
@@ -153,7 +215,7 @@ Start command 또는 Docker command 칸은 비워둬도 됩니다. 꼭 입력해
 처음에는 GitHub Packages에서 `ghcr.io/jiyeon-yoon/trustvla-runpod` package를 public으로
 바꾸는 것이 가장 단순합니다.
 
-## 6. 새 Pod 생성
+## 7. 새 Pod 생성
 
 RunPod에서 새 Pod를 만들 때:
 
@@ -177,7 +239,7 @@ GitHub: 코드 보관
 Network Volume 또는 외부 저장소: LIBERO dataset, HF model cache, runs 결과 보관
 ```
 
-## 7. Pod가 제대로 뜬 것인지 확인
+## 8. Pod가 제대로 뜬 것인지 확인
 
 RunPod에서:
 
@@ -231,7 +293,7 @@ PY
 RunPod에서는 `source /workspace/activate_trustvla.sh` 이후 `PYTHONPATH=src`를 앞에
 붙이지 않습니다.
 
-## 8. SSH로 접속하기
+## 9. SSH로 접속하기
 
 RunPod Pod 상세 화면의 `Connect` 탭에서 `SSH over exposed TCP` 명령어를 봅니다.
 예시는 다음처럼 생겼습니다.
@@ -261,59 +323,65 @@ Are you sure you want to continue connecting (yes/no/[fingerprint])?
 yes
 ```
 
-비밀번호를 물어보면 보통 SSH key가 적용되지 않은 것입니다. RunPod SSH key 설정에
-Mac public key가 들어갔는지 확인합니다.
+비밀번호를 물어보면 SSH key 인증이 실패한 것입니다. 5번 섹션의 SSH public key
+등록이 끝났는지 확인하거나, Web Terminal에서 `/root/.ssh/authorized_keys`에 public
+key를 직접 추가합니다.
 
-Mac public key 확인:
+## 10. VSCode Remote SSH 연결
 
-```bash
-cat ~/.ssh/id_ed25519.pub
-```
-
-## 9. VSCode Remote SSH 연결
-
-Mac에서 SSH config를 엽니다.
+이 단계는 **RunPod terminal이 아니라 Mac 로컬 terminal**에서 합니다.
 
 ```bash
 code ~/.ssh/config
 ```
 
-아래 block을 추가합니다.
+Mac에서 `code` 명령이 안 되면:
+
+```bash
+open -e ~/.ssh/config
+```
+
+RunPod `Connect -> SSH over exposed TCP`에 나온 명령에서 IP와 port만 가져옵니다.
+예를 들어 RunPod가 아래처럼 보여주면:
+
+```bash
+ssh root@47.47.180.12 -p 18068 -i ~/.ssh/id_ed25519
+```
+
+Mac의 `~/.ssh/config`에는 아래 block을 추가하거나 기존 `trustvla` block을 수정합니다.
 
 ```sshconfig
-Host runpod-trustvla
-    HostName <RUNPOD_IP>
+Host trustvla
+    HostName 47.47.180.12
     User root
-    Port <RUNPOD_PORT>
+    Port 18068
     IdentityFile ~/.ssh/id_ed25519
     IdentitiesOnly yes
     ServerAliveInterval 60
 ```
 
-예:
+새 Pod를 만들 때마다 보통 두 줄만 RunPod 화면의 새 값으로 바꿉니다.
 
 ```sshconfig
-Host runpod-trustvla
-    HostName 47.47.180.44
-    User root
-    Port 14067
-    IdentityFile ~/.ssh/id_ed25519
-    IdentitiesOnly yes
-    ServerAliveInterval 60
+    HostName <새 IP>
+    Port <새 PORT>
 ```
+
+`Host trustvla`는 Mac/VSCode에서 쓰는 별명입니다. RunPod Pod 이름과 같을 필요 없습니다.
+계속 `trustvla`로 써도 됩니다.
 
 VSCode에서:
 
 ```text
 Command Palette
 -> Remote-SSH: Connect to Host...
--> runpod-trustvla
+-> trustvla
 ```
 
 중요:
 
 ```text
-raw IP를 선택하지 말고 runpod-trustvla host를 선택합니다.
+raw IP를 선택하지 말고 trustvla 같은 Host alias를 선택합니다.
 그래야 port와 key 설정이 같이 적용됩니다.
 ```
 
@@ -323,49 +391,53 @@ raw IP를 선택하지 말고 runpod-trustvla host를 선택합니다.
 /workspace/trustvla-project
 ```
 
-## 10. 첫 실험 크기
+## 11. 지금 RunPod에서 실행할 순서
 
-처음부터 큰 실험을 돌리지 않습니다. 첫 RunPod 세션 목표는 아래입니다.
+아래 명령은 **현재 RunPod terminal**에서 실행합니다. 중간에 에러가 나면 다음 단계로
+넘어가지 말고 그 에러부터 해결합니다.
 
-```text
-LIBERO task: 1개
-init state: 1개
-rollout 종류: raw OpenVLA 먼저 1개
-max steps: 50
-```
-
-첫 성공 기준:
-
-```text
-runs/pilot/openvla_raw.jsonl
-runs/pilot/traces/raw/<case_id>.json
-```
-
-이 두 파일이 생기고 trace 안에 action/reward/contact 정보가 들어오면 1차 성공입니다.
-
-## 10-1. LIBERO 데이터와 Hugging Face 다운로드
-
-전체 LIBERO dataset mirror를 받을 필요는 없습니다. 첫 pilot은 `libero_object`만 씁니다.
-
-Hugging Face mirror:
-
-```text
-https://huggingface.co/datasets/yifengzhu-hf/LIBERO-datasets
-```
-
-첫 다운로드는 dry run부터 봅니다.
+### 11-1. 환경 확인
 
 ```bash
 source /workspace/activate_trustvla.sh
 cd /workspace/trustvla-project
 
+python -m trustvla.cli doctor
+nvidia-smi
+```
+
+기대값:
+
+```text
+libero: ok
+torch: ok
+transformers: ok
+PIL: ok
+numpy: ok
+RTX 4090 visible in nvidia-smi
+```
+
+### 11-2. LIBERO 데이터 다운로드
+
+처음에는 `libero_object`만 받습니다. 전체 dataset을 받지 않습니다.
+
+먼저 dry run으로 어떤 파일을 받을지 확인합니다. 이 명령은 실제 다운로드를 하지
+않습니다.
+
+```bash
 python -m trustvla.cli download-libero-hf \
   --suite libero_object \
   --local-dir /workspace/LIBERO-datasets \
   --dry-run
 ```
 
-괜찮으면 실제 다운로드:
+아래처럼 보이면 정상입니다. 아직 다운로드는 안 된 상태입니다.
+
+```text
+dry run only; no files downloaded
+```
+
+그 다음 실제 다운로드를 실행합니다.
 
 ```bash
 python -m trustvla.cli download-libero-hf \
@@ -373,93 +445,67 @@ python -m trustvla.cli download-libero-hf \
   --local-dir /workspace/LIBERO-datasets
 ```
 
-LIBERO 공식 script를 써야 하는 환경이면:
+### 11-3. LIBERO task 1개를 seed draft로 뽑기
 
 ```bash
-cd /opt/LIBERO
-python benchmark_scripts/download_libero_datasets.py \
-  --datasets libero_object \
-  --use-huggingface
-```
-
-처음부터 `all`을 받지 않습니다. pipeline이 돈 뒤에 `libero_spatial`을 추가합니다.
-
-## 11. LIBERO seed 1개 export
-
-```bash
-source /workspace/activate_trustvla.sh
-cd /workspace/trustvla-project
+mkdir -p data runs/pilot
 
 python -m trustvla.cli export-libero-seeds \
   --suite libero_object \
   --limit 1 \
   --out data/libero_object_seed_draft.json
+
+python -m json.tool data/libero_object_seed_draft.json | head -160
 ```
 
-생성된 파일 확인:
+여기서 멈추고 `data/libero_object_seed_draft.json`을 확인합니다.
 
-```bash
-python -m json.tool data/libero_object_seed_draft.json | head -120
-```
-
-수동으로 확인해야 하는 필드:
+반드시 확인하거나 채울 값:
 
 ```text
 target_object
 possible_objects
-distractor_objects
-absent_objects
-ambiguous_targets
 safety_hazards
 metadata.libero_task_id
 ```
 
-자동 export가 일부 필드를 채워도 그대로 믿지 않습니다. 특히 `safety_hazards`는 논문의
-trusted safety policy가 될 수 있으므로 사람이 확인해야 합니다.
+특히 `safety_hazards`가 빈 배열이면 safety 실험 case가 생성되지 않습니다. 첫 pilot이라도
+장면 안에서 접촉하면 안 되는 object 하나를 넣습니다.
 
-## 12. Safety policy draft 생성
+예:
+
+```json
+"safety_hazards": ["glass bottle"]
+```
+
+VSCode Remote SSH를 쓰고 있으면 파일을 직접 열어 수정합니다. terminal만 쓰면:
+
+```bash
+nano data/libero_object_seed_draft.json
+```
+
+### 11-4. Safety policy와 benchmark 만들기
 
 ```bash
 python -m trustvla.cli export-safety-policies \
   --seed-tasks data/libero_object_seed_draft.json \
   --out data/libero_object_safety_policies_draft.json
-```
-
-확인:
-
-```bash
-python -m json.tool data/libero_object_safety_policies_draft.json | head -160
-```
-
-여기서 protected object가 실제 장면의 hazard와 맞는지 봅니다. 이 파일은 benchmark
-정답이 아니라, runtime gate가 읽는 별도 safety policy입니다.
-
-## 13. Benchmark 생성과 검증
-
-```bash
-mkdir -p runs/pilot
 
 python -m trustvla.cli generate \
   --seed-tasks data/libero_object_seed_draft.json \
   --init-states 1 \
   --out runs/pilot/benchmark.jsonl
-```
 
-검증:
-
-```bash
 python -m trustvla.cli validate-benchmark \
   --benchmark runs/pilot/benchmark.jsonl \
   --safety-policies data/libero_object_safety_policies_draft.json
 ```
 
-`native_success_not_valid` warning은 target/spatial edit에서 나올 수 있습니다. 이 warning은
-"LIBERO 원래 reward를 그대로 counterfactual success로 쓰면 안 된다"는 뜻입니다. 첫 raw
-rollout 디버깅 단계에서는 괜찮지만, 논문 결과에서는 별도 evaluator가 필요합니다.
+`errors: 0`이어야 다음으로 갑니다. warning은 내용 확인 후 진행할 수 있습니다.
 
-## 14. Raw OpenVLA rollout 1개 실행
+### 11-5. Raw OpenVLA rollout 1개 실행
 
-처음에는 guard와 grounding prompt를 끄고 raw OpenVLA만 돌립니다.
+처음에는 guard와 language-emphasis 없이 raw OpenVLA만 실행합니다.
 
 ```bash
 python -m trustvla.cli run-openvla-libero \
@@ -472,21 +518,9 @@ python -m trustvla.cli run-openvla-libero \
   --trace-dir runs/pilot/traces/raw
 ```
 
-중간에 끊겼으면 같은 명령 끝에 `--resume`을 붙입니다.
+중간에 끊기면 같은 명령 끝에 `--resume`을 붙여 다시 실행합니다.
 
-```bash
-python -m trustvla.cli run-openvla-libero \
-  --benchmark runs/pilot/benchmark.jsonl \
-  --out runs/pilot/openvla_raw.jsonl \
-  --model-path openvla/openvla-7b \
-  --suite libero_object \
-  --device cuda:0 \
-  --max-steps 50 \
-  --trace-dir runs/pilot/traces/raw \
-  --resume
-```
-
-## 15. 결과 파일 확인
+## 12. 결과 파일 확인
 
 ```bash
 ls -lh runs/pilot
@@ -513,7 +547,7 @@ trustvla_contacts 또는 contact 관련 정보가 기록되는가
 
 여기까지 성공하면 RunPod 세션 1차 목표는 달성입니다.
 
-## 16. Language emphasis 실행
+## 13. Language emphasis 실행
 
 raw가 성공한 뒤에만 실행합니다.
 
@@ -532,7 +566,7 @@ python -m trustvla.cli run-openvla-libero \
 `language_emphasis`는 cheap pilot입니다. 논문 본실험에서는 CAG/IGAR 같은 재현 가능한
 grounding baseline을 추가해야 합니다.
 
-## 17. Safety gate 실행
+## 14. Safety gate 실행
 
 language emphasis가 성공한 뒤 실행합니다.
 
@@ -553,7 +587,7 @@ python -m trustvla.cli run-openvla-libero \
 이 gate는 benchmark의 `expected_behavior`나 `safety_class`를 보지 않습니다. raw
 instruction과 별도 safety policy만 보고 차단 여부를 결정합니다.
 
-## 18. 점수 계산
+## 15. 점수 계산
 
 raw rollout:
 
@@ -580,7 +614,7 @@ python -m trustvla.cli compare \
   --out runs/pilot/comparison_report.md
 ```
 
-## 19. Jupyter Notebook으로 실행
+## 16. Jupyter Notebook으로 실행
 
 RunPod Jupyter에서 아래 파일을 열 수 있습니다.
 
@@ -599,7 +633,7 @@ RUN_ROLLOUTS = True
 
 노트북은 편하지만, 에러가 났을 때는 terminal 명령어가 더 추적하기 쉽습니다.
 
-## 20. Pod 종료 전 체크리스트
+## 17. Pod 종료 전 체크리스트
 
 Network Volume 없이 Pod를 terminate하면 `/workspace` 내용이 사라집니다.
 
@@ -625,7 +659,7 @@ data/libero_object_safety_policies_draft.json
 백업합니다. 비용을 아끼려면 작업이 끝난 뒤 Pod는 stop이 아니라 terminate합니다.
 단, terminate 전에 결과 백업이 끝나 있어야 합니다.
 
-## 21. 다음 확장 기준
+## 18. 다음 확장 기준
 
 아래가 모두 확인되면 실험 크기를 키웁니다.
 
@@ -647,7 +681,7 @@ data/libero_object_safety_policies_draft.json
 두 번째 VLA 또는 grounding baseline 추가
 ```
 
-## 22. 자주 나는 문제
+## 19. 자주 나는 문제
 
 ### activate_trustvla.sh가 없다
 
